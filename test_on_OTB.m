@@ -55,7 +55,7 @@ function test_on_OTB(exp_id)
             
             video_path = [base_path '/' videos{vid}];
             [seq, ground_truth] = load_video_info(video_path, start_frame);
-            results = run_CRCFadap(seq);
+            results = run_CRCF(seq);
             rects = results.res;
             dlmwrite([exp_path '/' videos{vid}  '.txt'], rects, 'delimiter', '\t', 'precision', '%.2f');
             Precision = computePrecision(rects, ground_truth, 20);
