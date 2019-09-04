@@ -103,7 +103,12 @@ for frame = 1:num_frames
             %cos_window = cos_window_org .* likelihood_map;
             xt = bsxfun(@times, xt, prior_weights);
             %xt = cellfun(@times, xt, prior_weights, 'uniformoutput', false);
-            xt = bsxfun(@times, xt, cos_window); 
+            cr_map = xt(:,:,15);
+            cr_map = (cr_map + min(cr_map(:)))/(max(cr_map(:))+min(cr_map(:)));
+            if (sum(cr_map(:))/numel(cr_map)<0.06), cr_map = 1; end   
+            cr_map = max(cr_map, 0.1);
+            xt = bsxfun(@times, xt, cos_window);
+            %xt = bsxfun(@times, xt, cr_map);
             xtf = fft2(xt);
             hf = bsxfun(@rdivide, hf_num, sum(hf_den, 3)+lambda);
 

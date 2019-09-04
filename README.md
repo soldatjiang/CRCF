@@ -4,8 +4,8 @@ Matlab implementation of "**Robust visual tracking with adaptive channel weighte
 
 Performance on OTB-2015 benchmark
 
-![Precision plot of OPE](precision_plot.png)
-![Success plot of OPE](success_plot.png)
+![Precision plot of OPE](precision_plot.jpg)
+![Success plot of OPE](success_plot.jpg)
 
 ### References
 
