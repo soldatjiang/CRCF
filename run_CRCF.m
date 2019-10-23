@@ -7,7 +7,14 @@ params.output_sigma_factor = 1/16;
 params.learning_rate_cf = 0.01;
 params.learning_rate_hist = 0.04;
 params.learning_rate_scale = 0.025;
+params.learning_rate = 0.01;
 params.fixed_area = 150^2;
+
+params.gaussian_merge_sample = false;
+params.nSamples = 31;
+params.data_type = zeros(1, 'single');
+params.data_type_complex = complex(params.data_type);
+params.train_gap = 5;
 
 params.merge_factor = 0.3;
 

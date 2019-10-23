@@ -41,12 +41,12 @@ currentScaleFactor = 1.0;
 
 refinement_iteration = 1;
 
-prior_weights(1) = 0.3850; % Gray Feature
-prior_weights(2:14) = 0.3150; % HOG13 Feature
-prior_weights(15) = 0.3; %  CR Feature
+%channel_weights(1) = 0.3850; % Gray Feature
+%channel_weights(2:14) = 0.3150; % HOG13 Feature
+%channel_weights(15) = 0.3; %  CR Feature
 %prior_weights = ones(15,1);
 %prior_weights = prior_weights / sum(prior_weights);
-prior_weights = reshape(prior_weights, 1,1,15);
+%channel_weights = reshape(channel_weights, 1,1,15);
 
 if params.use_scale_filter
     scale_sigma_factor= params.scale_sigma_factor;
@@ -87,6 +87,18 @@ if params.use_scale_filter
     max_scale_factor = scale_step ^ floor(log(min([size(im,1) size(im,2)] ./ base_target_sz)) / log(scale_step));
 end
 
+if params.gaussian_merge_sample
+    % Distance matrix stores the square of the euclidean distance between each pair of
+    % samples. Initialise it to inf
+    distance_matrix = inf(params.nSamples, 'single');
+    % Kernel matrix, used to update distance matrix
+    gram_matrix = inf(params.nSamples, 'single');
+    samplesf = zeros(params.nSamples,cf_response_sz(1),cf_response_sz(2),15, 'like', params.data_type_complex);
+    params.minimum_sample_weight = params.learning_rate*(1-params.learning_rate)^(2*params.nSamples);
+    prior_weights = zeros(params.nSamples,1);
+    num_training_samples = 0;
+end
+
 time = 0;
 
 for frame = 1:num_frames
@@ -101,18 +113,22 @@ for frame = 1:num_frames
             %likelihood_map = mexResize(colour_map, cf_response_sz);
             %if (sum(likelihood_map(:))/prod(cf_response_sz)<0.01), likelihood_map = 1; end    
             %cos_window = cos_window_org .* likelihood_map;
-            xt = bsxfun(@times, xt, prior_weights);
+            %xt = bsxfun(@times, xt, channel_weights);
             %xt = cellfun(@times, xt, prior_weights, 'uniformoutput', false);
-            cr_map = xt(:,:,15);
-            cr_map = (cr_map + min(cr_map(:)))/(max(cr_map(:))+min(cr_map(:)));
-            if (sum(cr_map(:))/numel(cr_map)<0.06), cr_map = 1; end   
-            cr_map = max(cr_map, 0.1);
-            xt = bsxfun(@times, xt, cos_window);
-            %xt = bsxfun(@times, xt, cr_map);
+            xt = bsxfun(@times, xt, cos_window); 
             xtf = fft2(xt);
             hf = bsxfun(@rdivide, hf_num, sum(hf_den, 3)+lambda);
+            
+            %channel_response = hf .* xtf;
+            
+            %channel_max = max(max(channel_response, [], 1), [], 2);
+            %channel_APCE = APCE(channel_response);
+            %channel_weight = channel_max .* channel_APCE;
+            %channel_weight = channel_weight / sum(channel_weight(:));
 
+            %response_cf = real(ifft2(sum(bsxfun(@times, channel_weight, channel_response), 3)));
             response_cf = real(ifft2(sum(hf .* xtf, 3)));
+            weight_cf = max(response_cf(:)) * squeeze(APCE(response_cf));
 
             colour_map = mexResize(colour_map, norm_likelihood_sz);
             response_color = getCenterLikelihood(colour_map, norm_target_sz);
@@ -120,6 +136,9 @@ for frame = 1:num_frames
             %response_cf = sum(response_cf, 3);
             response_cf = crop_response(response_cf, floor_odd(norm_delta_sz / cell_size));
             response_cf = mexResize(response_cf, norm_delta_sz, 'auto');
+            
+            weight_color = max(response_color(:)) * squeeze(APCE(response_color));
+            merge_factor = weight_color/(weight_cf + weight_color);
             
             response = (1 - merge_factor) * response_cf + merge_factor * response_color;
             [row, col] = find(response == max(response(:)), 1);
@@ -166,19 +185,54 @@ for frame = 1:num_frames
     features{3} = update_histogram_model(im, pos, target_sz, learning_rate_hist, features{3});
     patch = get_subwindow(im, pos, norm_window_sz, window_sz);
     [xt,~] = extract_features(patch, features);
-    xt = bsxfun(@times, xt, prior_weights);
+    %xt = bsxfun(@times, xt, channel_weights);
     %xt = cellfun(@times, xt, prior_weights, 'uniformoutput', false);
     xt = bsxfun(@times, xt, cos_window); 
     xtf = fft2(xt);
-    new_hf_num = bsxfun(@times, yf, conj(xtf));
-    new_hf_den = conj(xtf) .* xtf;
-    
-    if frame == 1
-         hf_num = new_hf_num;
-         hf_den = new_hf_den;
+    if params.gaussian_merge_sample
+        [merged_sample, new_sample, merged_sample_id, new_sample_id, distance_matrix, gram_matrix, prior_weights] = ...
+                update_sample_space_model(samplesf, xtf, distance_matrix, gram_matrix, prior_weights,...
+                num_training_samples,params);
+            
+        if num_training_samples < params.nSamples
+            num_training_samples = num_training_samples + 1;
+        end
+        
+        if merged_sample_id > 0
+             samplesf(merged_sample_id,:,:,:) = merged_sample;
+        end
+        if new_sample_id > 0
+             samplesf(new_sample_id,:,:,:) = new_sample;
+        end
+        
+        if (frame==1||mod(frame, params.train_gap)==0)
+            if num_training_samples < params.nSamples
+                model_xf = sum(bsxfun(@times, prior_weights(1:num_training_samples), samplesf(1:num_training_samples,:,:,:)), 1);
+                model_xf_den = sum(bsxfun(@times, prior_weights(1:num_training_samples).^2, samplesf(1:num_training_samples,:,:,:).*conj(samplesf(1:num_training_samples,:,:,:))), 1);
+                model_xf = squeeze(model_xf);
+                model_xf_den = squeeze(model_xf_den);
+                hf_num = bsxfun(@times, yf, conj(model_xf));
+                hf_den = model_xf_den;
+            else
+                model_xf = sum(bsxfun(@times, prior_weights, samplesf), 1);
+                model_xf = squeeze(model_xf);
+                model_xf_den = sum(bsxfun(@times, prior_weights.^2, samplesf.*conj(samplesf)), 1);
+                model_xf_den = squeeze(model_xf_den);
+                hf_num = bsxfun(@times, yf, conj(model_xf));
+                hf_den = model_xf_den;
+            end
+        end
     else
-         hf_num = (1 - learning_rate_cf) * hf_num + learning_rate_cf * new_hf_num;
-         hf_den = (1 - learning_rate_cf) * hf_den + learning_rate_cf * new_hf_den;
+        new_hf_num = bsxfun(@times, yf, conj(xtf));
+        new_hf_den = conj(xtf) .* xtf;
+
+        if frame == 1
+             hf_num = new_hf_num;
+             hf_den = new_hf_den;
+        else
+             hf_num = (1 - learning_rate_cf) * hf_num + learning_rate_cf * new_hf_num;
+             hf_den = (1 - learning_rate_cf) * hf_den + learning_rate_cf * new_hf_den;
+        end
     end
     
     if params.use_scale_filter
@@ -285,4 +339,11 @@ end
 % We want odd regions so that the central pixel can be exact
 function y = floor_odd(x)
     y = 2*floor((x-1) / 2) + 1;
+end
+
+function out = APCE(response)
+    eps = 1e-4;
+    rmax = max(max(response, [], 1), [], 2);
+    rmin = min(min(response, [], 1), [], 2);
+    out = (rmax-rmin).^2 ./ (mean(mean((response-rmin).^2, 1), 2) + eps);
 end

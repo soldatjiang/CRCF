@@ -22,6 +22,7 @@ function colour_map = get_colour_map(patch, target_model, candidate_model, facto
      ratio_table(find(target_model==0))=0;
      %ratio_table(find(tg_hist==0))=0.5*norm;
      colour_map = reshape(ratio_table(index_im), h, w) / factor;
+     %colour_map(find(colour_map>1.0)) = 1.0;
 %     tg_map = tg_hist(hist_indices);
 %     cxt_map = cxt_hist(hist_indices);
 %     colour_map = reshape(sqrt(tg_map./cxt_map), h, w);

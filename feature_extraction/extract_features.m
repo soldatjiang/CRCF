@@ -21,10 +21,12 @@ function [out, colour_map] = extract_features(patch, features)
             else
                 tmp = single(patch)/255 - 0.5;
             end
-            tmp = mexResize(tmp, [out_h, out_w]);
+            %tmp = mexResize(tmp, [out_h, out_w]);
+            tmp = average_feature_region(tmp, 4);
         elseif strcmp(cur_feature.name, 'cr')
             colour_map = single(get_colour_map(patch, cur_feature.target_model, cur_feature.candidate_model, 3));
-            tmp = mexResize(colour_map, [out_h, out_w]);
+            %tmp = mexResize(colour_map, [out_h, out_w]);
+            tmp = average_feature_region(colour_map, 4);
         else
             error('feature not implemented!');
         end
