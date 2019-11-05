@@ -1,6 +1,5 @@
-function [merged_sample, new_sample, merged_sample_id, new_sample_id, distance_matrix, gram_matrix, prior_weights] = ...
-    update_sample_space_model(samplesf, new_train_sample, distance_matrix, gram_matrix, prior_weights,...
-    num_training_samples,params)
+function [merged_sample, new_sample, merged_sample_id, new_sample_id, merged_hashcode, new_hashcode, distance_matrix, prior_weights] = ...
+    update_sample_space_model(samples, new_train_sample, distance_matrix, hash_samples, prior_weights, num_training_samples,params)
 
 % Updates the sample space model 
 % There are 4 possible cases
@@ -19,11 +18,6 @@ function [merged_sample, new_sample, merged_sample_id, new_sample_id, distance_m
 % closest existing samples are merged. New train sample is placed in the
 % free slot
 
-% Find the inner product of the new sample with existing samples
-new_train_sample = reshape(new_train_sample, size(samplesf(1,:,:,:)));
-
-gram_vector = find_gram_vector(samplesf, new_train_sample, num_training_samples, params);
-
 % Find the distance of the new sample with the existing samples
 % Note: Since getting the 'exact' distance between the samples is not important,
 % the distance computation is done by using only the half spectrum for
@@ -31,18 +25,18 @@ gram_vector = find_gram_vector(samplesf, new_train_sample, num_training_samples,
 % since we wannt to merge samples that are similar, and finding the best
 % match is not important, small error in the distance computation doesn't
 % matter
-new_train_sample_norm =  zeros(1,'like', params.data_type);
 
-new_train_sample_norm = new_train_sample_norm + real(2*(new_train_sample(:)' * new_train_sample(:)));
+new_hashcode = compute_hashcode(new_train_sample, params.norm_target_sz);
 
-dist_vector = max(new_train_sample_norm + diag(gram_matrix) - 2*gram_vector,0);
-dist_vector(num_training_samples+1:end) = inf;
-
+dist_vector = inf(params.nSamples, 1, 'single');
+dist_vector = compute_dist_vector(new_hashcode, hash_samples, num_training_samples, dist_vector);
 
 merged_sample = [];
 new_sample = [];
 merged_sample_id = -1;
 new_sample_id = -1;
+merged_hashcode = false(64, 1);
+new_hashcode = false(64, 1);
 
 % Check if we have filled the memory
 if num_training_samples == params.nSamples
@@ -55,7 +49,10 @@ if num_training_samples == params.nSamples
         % replace that sample with the new sample
         
         % Update distance matrix and the gram matrix
-        [distance_matrix, gram_matrix] = update_distance_matrix(distance_matrix, gram_matrix, gram_vector, new_train_sample_norm, min_sample_id, -1, 0, 1);
+        %[distance_matrix, gram_matrix] = update_distance_matrix(distance_matrix, gram_matrix, gram_vector, new_train_sample_norm, min_sample_id, -1, 0, 1);
+        distance_matrix(:, min_sample_id) = dist_vector;
+        distance_matrix(min_sample_id, :) = dist_vector';
+        distance_matrix(min_sample_id, min_sample_id) = inf;
         
         % Normalise the prior weights so that the new sample gets weight as
         % the learning rate
@@ -96,13 +93,19 @@ if num_training_samples == params.nSamples
             merged_sample_id = closest_sample_to_new_sample;
             
             % Extract the existing sample to merge
-            existing_sample_to_merge = samplesf(merged_sample_id,:,:,:);
+            existing_sample_to_merge = samples(merged_sample_id,:,:,:);
         
             % Merge the new_train_sample with existing sample
             merged_sample = merge_samples(existing_sample_to_merge, new_train_sample, prior_weights(merged_sample_id), params.learning_rate);
             
-            % Update distance matrix and the gram matrix
-            [distance_matrix, gram_matrix] = update_distance_matrix(distance_matrix, gram_matrix, gram_vector, new_train_sample_norm, merged_sample_id, -1, prior_weights(merged_sample_id), params.learning_rate);
+            % Update distance matrix
+            hash_samples(:, merged_sample_id) = false(64, 1);
+            merged_hashcode = compute_hashcode(merged_sample, params.norm_target_sz);
+            dist_vector = inf(params.nSamples, 1, 'single');
+            dist_vector = compute_dist_vector(new_hashcode, hash_samples, num_training_samples, dist_vector);
+            distance_matrix(:, min_sample_id) = dist_vector;
+            distance_matrix(min_sample_id, :) = dist_vector';
+            distance_matrix(min_sample_id, min_sample_id) = inf;
             
             % Update the prior weight of the merged sample
             prior_weights(closest_sample_to_new_sample) = prior_weights(closest_sample_to_new_sample) + params.learning_rate;          
@@ -125,15 +128,11 @@ if num_training_samples == params.nSamples
             end
             
             % Extract the old sample
-            sample_to_merge1 = samplesf(closest_existing_sample1,:,:,:);
-            sample_to_merge2 = samplesf(closest_existing_sample2,:,:,:);
+            sample_to_merge1 = samples(closest_existing_sample1,:,:,:);
+            sample_to_merge2 = samples(closest_existing_sample2,:,:,:);
             
             % Merge the existing closest samples
             merged_sample = merge_samples(sample_to_merge1, sample_to_merge2, prior_weights(closest_existing_sample1), prior_weights(closest_existing_sample2));
-            
-            % Update distance matrix and the gram matrix
-            [distance_matrix, gram_matrix] = update_distance_matrix(distance_matrix, gram_matrix, gram_vector, new_train_sample_norm, closest_existing_sample1,closest_existing_sample2, ...
-                prior_weights(closest_existing_sample1),prior_weights(closest_existing_sample2));
                         
             % Update prior weights for the merged sample and the new sample
             prior_weights(closest_existing_sample1) = prior_weights(closest_existing_sample1) + prior_weights(closest_existing_sample2);
@@ -143,7 +142,23 @@ if num_training_samples == params.nSamples
             merged_sample_id = closest_existing_sample1;
             new_sample_id = closest_existing_sample2;
             
-            new_sample = new_train_sample;            
+            new_sample = new_train_sample;  
+            
+            % Update distance matrix
+            merged_hashcode = compute_hashcode(merged_sample, params.norm_target_sz);
+            hash_samples(:, new_sample_id) = new_hashcode;
+            hash_samples(:, merged_sample_id) = merged_hashcode;
+            dist_vector = inf(params.nSamples, 1, 'single');
+            dist_vector = compute_dist_vector(new_hashcode, hash_samples, num_training_samples, dist_vector);
+            distance_matrix(:, new_sample_id) = dist_vector;
+            distance_matrix(new_sample_id, :) = dist_vector';
+            
+            distance_matrix(new_sample_id, new_sample_id) = inf;
+            dist_vector = inf(params.nSamples, 1, 'single');
+            dist_vector = compute_dist_vector(merged_hashcode, hash_samples, num_training_samples, dist_vector);
+            distance_matrix(:, merged_sample_id) = dist_vector;
+            distance_matrix(merged_sample_id, :) = dist_vector';
+            distance_matrix(merged_sample_id, merged_sample_id) = inf;
         end
     end
 else
@@ -151,10 +166,7 @@ else
     % location
     
     sample_position = num_training_samples + 1;
-    
-    % Update the distance matrix and the gram matrix
-    [distance_matrix, gram_matrix] = update_distance_matrix(distance_matrix, gram_matrix, gram_vector, new_train_sample_norm, sample_position, -1, 0, 1);
-    
+
     % Update the prior weight
     if sample_position == 1
         prior_weights(sample_position) = 1;
@@ -165,6 +177,10 @@ else
     
     new_sample_id = sample_position;    
     new_sample = new_train_sample;
+    
+    distance_matrix(:, new_sample_id) = dist_vector;
+    distance_matrix(new_sample_id, :) = dist_vector';
+    distance_matrix(new_sample_id, new_sample_id) = inf;
 end
 
 % Ensure that prior weights always sum to 1

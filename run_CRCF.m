@@ -4,13 +4,13 @@ params.padding = 1;
 params.lambda = 1e-3;
 params.output_sigma_factor = 1/16;
     
-params.learning_rate_cf = 0.01;
+params.learning_rate_cf = 0.013;
 params.learning_rate_hist = 0.04;
 params.learning_rate_scale = 0.025;
 params.learning_rate = 0.01;
 params.fixed_area = 150^2;
 
-params.gaussian_merge_sample = false;
+params.gaussian_merge_sample = true;
 params.nSamples = 31;
 params.data_type = zeros(1, 'single');
 params.data_type_complex = complex(params.data_type);

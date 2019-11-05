@@ -11,5 +11,7 @@ alpha1 = w1/(w1+w2);
 alpha2 = 1 - alpha1;
 
 % Build the merged sample
-merged_sample = alpha1*sample1 + alpha2*sample2;
+sample1 = squeeze(sample1);
+sample2 = squeeze(sample2);
+merged_sample = squeeze(alpha1*sample1 + alpha2*sample2);
 end
