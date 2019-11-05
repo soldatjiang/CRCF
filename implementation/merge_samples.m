@@ -13,5 +13,5 @@ alpha2 = 1 - alpha1;
 % Build the merged sample
 sample1 = squeeze(sample1);
 sample2 = squeeze(sample2);
-merged_sample = squeeze(alpha1*sample1 + alpha2*sample2);
+merged_sample = uint8(squeeze(alpha1*single(sample1) + alpha2*single(sample2)));
 end
