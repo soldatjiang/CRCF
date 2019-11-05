@@ -174,25 +174,27 @@ for frame = 1:num_frames
         end
         
         if params.use_scale_filter
-            %create a new feature projection matrix
-            [xs_pca, xs_npca] = get_scale_subwindow(im,pos,base_target_sz,currentScaleFactor*scaleSizeFactors,scale_model_sz);
+            if ~unreliable_flag
+                %create a new feature projection matrix
+                [xs_pca, xs_npca] = get_scale_subwindow(im,pos,base_target_sz,currentScaleFactor*scaleSizeFactors,scale_model_sz);
 
-            xs = feature_projection_scale(xs_npca,xs_pca,scale_basis,scale_window);
-            xsf = fft(xs,[],2);
+                xs = feature_projection_scale(xs_npca,xs_pca,scale_basis,scale_window);
+                xsf = fft(xs,[],2);
 
-            scale_responsef = sum(sf_num .* xsf, 1) ./ (sf_den + scale_lambda);
+                scale_responsef = sum(sf_num .* xsf, 1) ./ (sf_den + scale_lambda);
 
-            interp_scale_response = ifft( resizeDFT(scale_responsef, nScalesInterp), 'symmetric');
+                interp_scale_response = ifft( resizeDFT(scale_responsef, nScalesInterp), 'symmetric');
 
-            recovered_scale_index = find(interp_scale_response == max(interp_scale_response(:)), 1);
+                recovered_scale_index = find(interp_scale_response == max(interp_scale_response(:)), 1);
 
-            %set the scale
-            currentScaleFactor = currentScaleFactor * interpScaleFactors(recovered_scale_index);
-            %adjust to make sure we are not to large or to small
-            if currentScaleFactor < min_scale_factor
-                currentScaleFactor = min_scale_factor;
-            elseif currentScaleFactor > max_scale_factor
-                currentScaleFactor = max_scale_factor;
+                %set the scale
+                currentScaleFactor = currentScaleFactor * interpScaleFactors(recovered_scale_index);
+                %adjust to make sure we are not to large or to small
+                if currentScaleFactor < min_scale_factor
+                    currentScaleFactor = min_scale_factor;
+                elseif currentScaleFactor > max_scale_factor
+                    currentScaleFactor = max_scale_factor;
+                end
             end
         end
 
@@ -308,7 +310,7 @@ for frame = 1:num_frames
     end
     
     if params.use_scale_filter
-        if true
+        if ~unreliable_flag
             %create a new feature projection matrix
             [xs_pca, xs_npca] = get_scale_subwindow(im, pos, base_target_sz, currentScaleFactor*scaleSizeFactors, scale_model_sz);
 
