@@ -1,4 +1,4 @@
-function [out_pca,out_npca] = get_scale_subwindow(im, pos, base_target_sz, scaleFactors, scale_model_sz)
+function out = get_scale_subwindow(im, pos, base_target_sz, scaleFactors, scale_model_sz, scale_window)
 
 nScales = length(scaleFactors);
 
@@ -23,15 +23,13 @@ for s = 1:nScales
     im_patch_resized = mexResize(im_patch, scale_model_sz, 'auto');
     
     % extract scale features
-    temp_hog = hog13(single(im_patch_resized));
-    %temp_hog = Hog13Feature(single(im_patch_resized));
+    %temp_hog = hog13(single(im_patch_resized));
+    temp_hog = Hog13Feature(single(im_patch_resized));
     
     if s == 1
         dim_scale = size(temp_hog,1)*size(temp_hog,2)*13;
-        out_pca = zeros(dim_scale, nScales, 'single');
+        out = zeros(dim_scale, nScales, 'single');
     end
     
-    out_pca(:,s) = reshape(temp_hog(:), dim_scale, 1);
+    out(:,s) = reshape(temp_hog(:), dim_scale, 1) * scale_window(s);
 end
-
-out_npca = [];

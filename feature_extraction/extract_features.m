@@ -13,20 +13,18 @@ function [out, colour_map] = extract_features(patch, features)
     for f = 1:length(features)
         cur_feature = features{f};
         if strcmp(cur_feature.name, 'hog13')
-            %tmp = Hog13Feature(single(patch));
-            tmp = hog13(single(patch));
+            tmp = Hog13Feature(single(patch));
+            %tmp = hog13(single(patch));
         elseif strcmp(cur_feature.name, 'gray')
             if size(patch, 3)>1
                 tmp = single(rgb2gray(patch))/255 - 0.5;
             else
                 tmp = single(patch)/255 - 0.5;
             end
-            %tmp = mexResize(tmp, [out_h, out_w]);
-            tmp = average_feature_region(tmp, 4);
+            tmp = mexResize(tmp, [out_h, out_w]);
         elseif strcmp(cur_feature.name, 'cr')
             colour_map = single(get_colour_map(patch, cur_feature.target_model, cur_feature.candidate_model, 3));
-            %tmp = mexResize(colour_map, [out_h, out_w]);
-            tmp = average_feature_region(colour_map, 4);
+            tmp = mexResize(colour_map, [out_h, out_w]);
         else
             error('feature not implemented!');
         end

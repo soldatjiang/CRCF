@@ -4,17 +4,10 @@ params.padding = 1;
 params.lambda = 1e-3;
 params.output_sigma_factor = 1/16;
     
-params.learning_rate_cf = 0.013;
+params.learning_rate_cf = 0.01;
 params.learning_rate_hist = 0.04;
 params.learning_rate_scale = 0.025;
-params.learning_rate = 0.01;
 params.fixed_area = 150^2;
-
-params.gaussian_merge_sample = true;
-params.nSamples = 31;
-params.data_type = zeros(1, 'single');
-params.data_type_complex = complex(params.data_type);
-params.train_gap = 5;
 
 params.merge_factor = 0.3;
 
@@ -23,10 +16,9 @@ params.features{2} = struct('name', 'hog13', 'dim', 13);
 params.features{3} = struct('name', 'cr', 'dim', 1, 'target_model', [], 'candidate_model', []);
 
 params.use_scale_filter = true;
-params.scale_sigma_factor = 1/16;       % Scale label function sigma
+params.scale_sigma_factor = 1/4;       % Scale label function sigma
 params.scale_learning_rate = 0.025;		% Scale filter learning rate
-params.number_of_scales = 17;    % Number of scales
-params.number_of_interp_scales = 33;    % Number of interpolated scales
+params.number_of_scales = 33;    % Number of scales
 params.scale_model_factor = 1.0;        % Scaling of the scale model
 params.scale_step = 1.02;        % The scale factor for the scale filter
 params.scale_model_max_area = 32*16;    % Maximume area for the scale sample patch
