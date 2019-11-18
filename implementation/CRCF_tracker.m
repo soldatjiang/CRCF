@@ -229,7 +229,7 @@ for frame = 1:num_frames
                  temp = bsxfun(@times, temp, channel_weights);  
                  temp = bsxfun(@times, temp, cos_window); 
                  samples(merged_sample_id,:,:,:) = temp;
-                 samplesf(merged_sample_id,:,:,:) = fft2(temp);
+                 %samplesf(merged_sample_id,:,:,:) = fft2(temp);
             end
             if new_sample_id > 0
                  samples_patch(new_sample_id,:,:,:) = new_sample;
@@ -238,7 +238,7 @@ for frame = 1:num_frames
                  temp = bsxfun(@times, temp, channel_weights);  
                  temp = bsxfun(@times, temp, cos_window); 
                  samples(new_sample_id,:,:,:) = temp;
-                 samplesf(new_sample_id,:,:,:) = fft2(temp);
+                 %samplesf(new_sample_id,:,:,:) = fft2(temp);
             end
         end
         
@@ -259,6 +259,7 @@ for frame = 1:num_frames
                     hf_num = bsxfun(@times, yf, conj(model_xf));
                     hf_den = model_xf .* conj(model_xf);
                 else
+                    samplesf = fft(fft(samples, [], 2), [], 3);
                     model_xf = sum(bsxfun(@times, prior_weights(1:num_training_samples), samplesf(1:num_training_samples,:,:,:)), 1);
                     model_xf_den = sum(bsxfun(@times, prior_weights(1:num_training_samples), samplesf(1:num_training_samples,:,:,:).*conj(samplesf(1:num_training_samples,:,:,:))), 1);
                     model_xf = squeeze(model_xf);
@@ -283,6 +284,7 @@ for frame = 1:num_frames
                     hf_num = bsxfun(@times, yf, conj(model_xf));
                     hf_den = model_xf .* conj(model_xf);
                 else
+                    samplesf = fft(fft(samples, [], 2), [], 3);
                     model_xf = sum(bsxfun(@times, prior_weights, samplesf), 1);
                     model_xf = squeeze(model_xf);
                     model_xf_den = sum(bsxfun(@times, prior_weights, samplesf.*conj(samplesf)), 1);
