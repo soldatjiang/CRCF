@@ -93,7 +93,7 @@ if params.gaussian_merge_sample
     hash_samples = false(64, params.nSamples);
     samples_patch = zeros(params.nSamples, norm_window_sz(1), norm_window_sz(2), size(im, 3), 'uint8');
     samples = zeros(params.nSamples, floor(norm_window_sz(1)/cell_size), floor(norm_window_sz(2)/cell_size), 15, 'single');
-    samplesf = zeros(params.nSamples, floor(norm_window_sz(1)/cell_size), floor(norm_window_sz(2)/cell_size), 15, 'like', params.data_type_complex);
+    %samplesf = zeros(params.nSamples, floor(norm_window_sz(1)/cell_size), floor(norm_window_sz(2)/cell_size), 15, 'like', params.data_type_complex);
     params.minimum_sample_weight = params.learning_rate*(1-params.learning_rate)^(2*params.nSamples);
     prior_weights = zeros(params.nSamples,1);
     num_training_samples = 0;
@@ -226,19 +226,17 @@ for frame = 1:num_frames
                  samples_patch(merged_sample_id,:,:,:) = merged_sample;
                  hash_samples(:, merged_sample_id) = merged_hashcode;
                  [temp, ~] = extract_features(merged_sample, features);
-                 temp = bsxfun(@times, temp, channel_weights);  
-                 temp = bsxfun(@times, temp, cos_window); 
+                 %temp = bsxfun(@times, temp, channel_weights);  
+                 %temp = bsxfun(@times, temp, cos_window); 
                  samples(merged_sample_id,:,:,:) = temp;
-                 samplesf(merged_sample_id,:,:,:) = fft2(temp);
             end
             if new_sample_id > 0
                  samples_patch(new_sample_id,:,:,:) = new_sample;
                  hash_samples(:, new_sample_id) = new_hashcode;
                  [temp, ~] = extract_features(new_sample, features);
-                 temp = bsxfun(@times, temp, channel_weights);  
-                 temp = bsxfun(@times, temp, cos_window); 
+                 %temp = bsxfun(@times, temp, channel_weights);  
+                 %temp = bsxfun(@times, temp, cos_window); 
                  samples(new_sample_id,:,:,:) = temp;
-                 samplesf(new_sample_id,:,:,:) = fft2(temp);
             end
         end
         
@@ -249,49 +247,37 @@ for frame = 1:num_frames
                 %model_xf = squeeze(model_xf);
                 %model_xf_den = squeeze(model_xf_den);
                 
-                if params.form2
-                    model_x = sum(bsxfun(@times, prior_weights(1:num_training_samples), samples(1:num_training_samples,:,:,:)), 1);
-                    model_x = squeeze(model_x);
-                    %model_x = bsxfun(@times, model_x, channel_weights);  
-                    %model_x = bsxfun(@times, model_x, cos_window); 
-                    model_xf = fft2(model_x);
-
-                    hf_num = bsxfun(@times, yf, conj(model_xf));
-                    hf_den = model_xf .* conj(model_xf);
-                else
-                    model_xf = sum(bsxfun(@times, prior_weights(1:num_training_samples), samplesf(1:num_training_samples,:,:,:)), 1);
-                    model_xf_den = sum(bsxfun(@times, prior_weights(1:num_training_samples), samplesf(1:num_training_samples,:,:,:).*conj(samplesf(1:num_training_samples,:,:,:))), 1);
-                    model_xf = squeeze(model_xf);
-                    model_xf_den = squeeze(model_xf_den);
-                    
-                    hf_num = bsxfun(@times, yf, conj(model_xf));
-                    hf_den = model_xf_den;
-                end
+                if 
+                model_x = sum(bsxfun(@times, prior_weights(1:num_training_samples), samples(1:num_training_samples,:,:,:)), 1);
+                model_x = squeeze(model_x);
+                model_x = bsxfun(@times, model_x, channel_weights);  
+                model_x = bsxfun(@times, model_x, cos_window); 
+                model_xf = fft2(model_x);
+                
+                hf_num = bsxfun(@times, yf, conj(model_xf));
+                hf_den = model_xf .* conj(model_xf);
             else
                 %model_xf = sum(bsxfun(@times, prior_weights, samplesf), 1);
                 %model_xf = squeeze(model_xf);
                 %model_xf_den = sum(bsxfun(@times, prior_weights, samplesf.*conj(samplesf)), 1);
                 %model_xf_den = squeeze(model_xf_den);
                 
+                model_x = sum(bsxfun(@times, prior_weights, samples), 1);
+                model_x = squeeze(model_x);
+                model_x = bsxfun(@times, model_x, channel_weights);  
+                model_x = bsxfun(@times, model_x, cos_window); 
+                model_xf = fft2(model_x);
                 
-                if params.form2
-                    model_x = sum(bsxfun(@times, prior_weights, samples), 1);
-                    model_x = squeeze(model_x);
-                    %model_x = bsxfun(@times, model_x, channel_weights);  
-                    %model_x = bsxfun(@times, model_x, cos_window); 
-                    model_xf = fft2(model_x);
-                    hf_num = bsxfun(@times, yf, conj(model_xf));
-                    hf_den = model_xf .* conj(model_xf);
-                else
-                    model_xf = sum(bsxfun(@times, prior_weights, samplesf), 1);
-                    model_xf = squeeze(model_xf);
-                    model_xf_den = sum(bsxfun(@times, prior_weights, samplesf.*conj(samplesf)), 1);
-                    model_xf_den = squeeze(model_xf_den);
-                    
-                    hf_num = bsxfun(@times, yf, conj(model_xf));
-                    hf_den = model_xf_den;
-                end
+                %model_patch = sum(bsxfun(@times, prior_weights, single(samples_patch)), 1);
+                %model_patch = squeeze(model_patch);
+                %[model_x, ~] = extract_features(model_patch, features);
+                %model_x = bsxfun(@times, model_x, channel_weights);  
+                %model_x = bsxfun(@times, model_x, cos_window); 
+                %model_xf = fft2(model_x);
                 
+                hf_num = bsxfun(@times, yf, conj(model_xf));
+                %hf_den = model_xf_den;
+                hf_den = model_xf .* conj(model_xf);
             end
         end
     else
