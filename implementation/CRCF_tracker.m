@@ -9,8 +9,6 @@ learning_rate_cf = params.learning_rate_cf;
 learning_rate_hist = params.learning_rate_hist;
 learning_rate_scale = params.learning_rate_scale;
 
-merge_factor = params.merge_factor;
-
 params = init_all_areas(params);
 window_sz = params.window_sz;
 norm_window_sz = params.norm_window_sz;
