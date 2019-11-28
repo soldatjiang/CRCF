@@ -1,4 +1,4 @@
-function [merged_sample, new_sample, merged_sample_id, new_sample_id, merged_hashcode, new_hashcode, distance_matrix, prior_weights] = ...
+function [merged_sample, new_sample, merged_sample_id, new_sample_id, merge_sample_id1, merge_sample_id2, merge_w1, merge_w2, merged_hashcode, new_hashcode, distance_matrix, prior_weights] = ...
     update_sample_space_model(samples, new_train_sample, distance_matrix, hash_samples, prior_weights, num_training_samples,params)
 
 % Updates the sample space model 
@@ -35,6 +35,10 @@ merged_sample = [];
 new_sample = [];
 merged_sample_id = -1;
 new_sample_id = -1;
+merge_sample_id1 = -1;
+merge_sample_id2 = -1;
+merge_w1 = 0;
+merge_w2 = 0;
 merged_hashcode = false(64, 1);
 new_hashcode = false(64, 1);
 
@@ -94,7 +98,10 @@ if num_training_samples == params.nSamples
             
             % Extract the existing sample to merge
             existing_sample_to_merge = samples(merged_sample_id,:,:,:);
-        
+            merge_sample_id1 = merged_sample_id;
+            merge_w1 = prior_weights(merged_sample_id);
+            merge_w2 = params.learning_rate;
+            
             % Merge the new_train_sample with existing sample
             merged_sample = merge_samples(existing_sample_to_merge, new_train_sample, prior_weights(merged_sample_id), params.learning_rate);
             
@@ -130,6 +137,10 @@ if num_training_samples == params.nSamples
             % Extract the old sample
             sample_to_merge1 = samples(closest_existing_sample1,:,:,:);
             sample_to_merge2 = samples(closest_existing_sample2,:,:,:);
+            merge_sample_id1 = closest_existing_sample1;
+            merge_sample_id2 = closest_existing_sample2;
+            merge_w1 = prior_weights(closest_existing_sample1);
+            merge_w2 = prior_weights(closest_existing_sample2);
             
             % Merge the existing closest samples
             merged_sample = merge_samples(sample_to_merge1, sample_to_merge2, prior_weights(closest_existing_sample1), prior_weights(closest_existing_sample2));

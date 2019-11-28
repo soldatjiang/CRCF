@@ -22,6 +22,8 @@ params.features{1} = struct('name', 'gray', 'dim', 1);
 params.features{2} = struct('name', 'hog13', 'dim', 13);
 params.features{3} = struct('name', 'cr', 'dim', 1, 'target_model', [], 'candidate_model', []);
 
+params.features_large{1} = struct('name', 'hog13', 'dim', 13);
+
 params.use_scale_filter = true;
 params.scale_sigma_factor = 1/16;       % Scale label function sigma
 params.scale_learning_rate = 0.025;		% Scale filter learning rate
@@ -33,7 +35,8 @@ params.scale_model_max_area = 32*16;    % Maximume area for the scale sample pat
 params.scale_lambda = 1e-2;					% Scale filter regularization
 params.do_poly_interp = true;           % Do 2nd order polynomial interpolation to obtain more accurate scale
 
-params.form2 = false;
+params.form2 = true;
+params.search_area_scale = 5;
 
 params.target_sz    = [seq.init_rect(1,4), seq.init_rect(1,3)];
 params.init_pos = [seq.init_rect(1,2), seq.init_rect(1,1)] + floor(params.target_sz/2);

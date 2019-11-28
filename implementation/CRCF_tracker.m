@@ -4,6 +4,7 @@ padding = params.padding;
 lambda = params.lambda;
 output_sigma_factor = params.output_sigma_factor;
 features = params.features;
+features_large = params.features_large;
     
 learning_rate_cf = params.learning_rate_cf;
 learning_rate_hist = params.learning_rate_hist;
@@ -17,6 +18,8 @@ norm_target_sz = params.norm_target_sz;
 norm_likelihood_sz = params.norm_likelihood_sz;
 norm_delta_sz = params.norm_delta_sz;
 cf_response_sz = params.cf_response_sz;
+window_sz_large = params.window_sz_large;
+norm_window_sz_large = params.norm_window_sz_large;
 
 s_frames = params.s_frames;
 pos = floor(params.init_pos);
@@ -35,6 +38,7 @@ yf = fft2(y);
 center =(1 + norm_delta_sz) / 2;
 
 cos_window = hann(cf_response_sz(1))*hann(cf_response_sz(2))';
+cos_window_large = hann(floor(norm_window_sz_large(1)/cell_size))*hann(floor(norm_window_sz_large(2)/cell_size))';
 currentScaleFactor = 1.0;
 
 refinement_iteration = 1;
@@ -90,7 +94,10 @@ if params.gaussian_merge_sample
     distance_matrix = inf(params.nSamples, 'single');
     hash_samples = false(64, params.nSamples);
     samples_patch = zeros(params.nSamples, norm_window_sz(1), norm_window_sz(2), size(im, 3), 'uint8');
+    samples_patch_large = zeros(params.nSamples, norm_window_sz_large(1), norm_window_sz_large(2), size(im, 3), 'uint8');
+    samples_feature_extracted = false(params.nSamples,1);
     samples = zeros(params.nSamples, floor(norm_window_sz(1)/cell_size), floor(norm_window_sz(2)/cell_size), 15, 'single');
+    samples_large = zeros(params.nSamples, floor(norm_window_sz_large(1)/cell_size), floor(norm_window_sz_large(2)/cell_size), 13, 'single');
     samplesf = zeros(params.nSamples, floor(norm_window_sz(1)/cell_size), floor(norm_window_sz(2)/cell_size), 15, 'like', params.data_type_complex);
     params.minimum_sample_weight = params.learning_rate*(1-params.learning_rate)^(2*params.nSamples);
     prior_weights = zeros(params.nSamples,1);
@@ -211,9 +218,10 @@ for frame = 1:num_frames
         features{3} = update_histogram_model(im, pos, target_sz, learning_rate_hist, features{3});
     end
     patch = get_subwindow(im, pos, norm_window_sz, window_sz);
+    patch_large = get_subwindow(im, pos, norm_window_sz_large, window_sz_large);
     if params.gaussian_merge_sample
         if ~unreliable_flag
-            [merged_sample, new_sample, merged_sample_id, new_sample_id, merged_hashcode, new_hashcode, distance_matrix, prior_weights] = ...
+            [merged_sample, new_sample, merged_sample_id, new_sample_id, merge_sample_id1, merge_sample_id2, merge_w1, merge_w2, merged_hashcode, new_hashcode, distance_matrix, prior_weights] = ...
                     update_sample_space_model(samples_patch, patch, distance_matrix, hash_samples, prior_weights, num_training_samples, params);
 
             if num_training_samples < params.nSamples
@@ -222,6 +230,14 @@ for frame = 1:num_frames
 
             if merged_sample_id > 0
                  samples_patch(merged_sample_id,:,:,:) = merged_sample;
+                 samples_large_to_merge1 = samples_patch_large(merge_sample_id1,:,:,:);
+                 if merge_sample_id2==-1
+                     samples_large_to_merge2 = patch_large;
+                 else
+                     samples_large_to_merge2 = samples_patch_large(merge_sample_id2,:,:,:);
+                 end
+                 samples_patch_large(merged_sample_id,:,:,:) = merge_samples(samples_large_to_merge1,samples_large_to_merge2,merge_w1,merge_w2);
+                 samples_feature_extracted(merged_sample_id) = false;
                  hash_samples(:, merged_sample_id) = merged_hashcode;
                  [temp, ~] = extract_features(merged_sample, features);
                  temp = bsxfun(@times, temp, channel_weights);  
@@ -231,12 +247,35 @@ for frame = 1:num_frames
             end
             if new_sample_id > 0
                  samples_patch(new_sample_id,:,:,:) = new_sample;
+                 samples_patch_large(new_sample_id,:,:,:) = patch_large;
+                 samples_feature_extracted(new_sample_id) = false;
                  hash_samples(:, new_sample_id) = new_hashcode;
                  [temp, ~] = extract_features(new_sample, features);
                  temp = bsxfun(@times, temp, channel_weights);  
                  temp = bsxfun(@times, temp, cos_window); 
                  samples(new_sample_id,:,:,:) = temp;
                  %samplesf(new_sample_id,:,:,:) = fft2(temp);
+            end
+        else
+            % Handle unreliable frame
+            if num_training_samples < params.nSamples
+                   % Extract features
+                   feature_extracted = samples_feature_extracted(1:num_training_samples);
+                   extract_ind = find(~feature_extracted);
+                   for k=1:numel(extract_ind)
+                       [temp,~] = extract_features(squeeze(samples_patch_large(k,:,:,:)), features_large);
+                       temp = bsxfun(@times, temp, cos_window_large);
+                       samples_large(k,:,:,:) = temp;
+                   end
+            else
+                   % Extract features
+                   feature_extracted = samples_feature_extracted;
+                   extract_ind = find(~feature_extracted);
+                   for k=1:numel(extract_ind)
+                       [temp,~] = extract_features(squeeze(samples_patch_large(k,:,:,:)), features_large);
+                       temp = bsxfun(@times, temp, cos_window_large);
+                       samples_large(k,:,:,:) = temp;
+                   end
             end
         end
         
