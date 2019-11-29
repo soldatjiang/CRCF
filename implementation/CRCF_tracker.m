@@ -99,6 +99,7 @@ if params.gaussian_merge_sample
     samples = zeros(params.nSamples, floor(norm_window_sz(1)/cell_size), floor(norm_window_sz(2)/cell_size), 15, 'single');
     samples_large = zeros(params.nSamples, floor(norm_window_sz_large(1)/cell_size), floor(norm_window_sz_large(2)/cell_size), 13, 'single');
     samplesf = zeros(params.nSamples, floor(norm_window_sz(1)/cell_size), floor(norm_window_sz(2)/cell_size), 15, 'like', params.data_type_complex);
+    samplesf_large = zeros(params.nSamples, floor(norm_window_sz_large(1)/cell_size), floor(norm_window_sz_large(2)/cell_size), 13, 'like', params.data_type_complex);
     params.minimum_sample_weight = params.learning_rate*(1-params.learning_rate)^(2*params.nSamples);
     prior_weights = zeros(params.nSamples,1);
     num_training_samples = 0;
@@ -151,10 +152,6 @@ for frame = 1:num_frames
             response_cf = mexResize(response_cf, norm_delta_sz, 'auto');
             
             merge_factor = reliability_color / (reliability_cf + reliability_color);
-            %merge_factor = 0.3;
-            %merge_factor = 0;
-            
-            %merge_factor
             
             response = (1 - merge_factor) * response_cf + merge_factor * response_color;
             
@@ -243,7 +240,7 @@ for frame = 1:num_frames
                  temp = bsxfun(@times, temp, channel_weights);  
                  temp = bsxfun(@times, temp, cos_window); 
                  samples(merged_sample_id,:,:,:) = temp;
-                 %samplesf(merged_sample_id,:,:,:) = fft2(temp);
+                 samplesf(merged_sample_id,:,:,:) = fft2(temp);
             end
             if new_sample_id > 0
                  samples_patch(new_sample_id,:,:,:) = new_sample;
@@ -254,27 +251,41 @@ for frame = 1:num_frames
                  temp = bsxfun(@times, temp, channel_weights);  
                  temp = bsxfun(@times, temp, cos_window); 
                  samples(new_sample_id,:,:,:) = temp;
-                 %samplesf(new_sample_id,:,:,:) = fft2(temp);
+                 samplesf(new_sample_id,:,:,:) = fft2(temp);
             end
         else
             % Handle unreliable frame
             if num_training_samples < params.nSamples
                    % Extract features
                    feature_extracted = samples_feature_extracted(1:num_training_samples);
-                   extract_ind = find(~feature_extracted);
-                   for k=1:numel(extract_ind)
-                       [temp,~] = extract_features(squeeze(samples_patch_large(k,:,:,:)), features_large);
-                       temp = bsxfun(@times, temp, cos_window_large);
-                       samples_large(k,:,:,:) = temp;
+                   if any(~feature_extracted)
+                       [~feature_extracted]'
+                       disp('Learning from new samples')
+                       extract_ind = find(~feature_extracted);
+                       for k=1:numel(extract_ind)
+                           cur_ind = extract_ind(k);
+                           [temp,~] = extract_features(squeeze(samples_patch_large(cur_ind,:,:,:)), features_large);
+                           temp = bsxfun(@times, temp, cos_window_large);
+                           samples_large(cur_ind,:,:,:) = temp;
+                           samplesf_large(cur_ind,:,:,:) = fft2(temp);
+                           samples_feature_extracted(cur_ind) = true;
+                       end
                    end
             else
                    % Extract features
                    feature_extracted = samples_feature_extracted;
-                   extract_ind = find(~feature_extracted);
-                   for k=1:numel(extract_ind)
-                       [temp,~] = extract_features(squeeze(samples_patch_large(k,:,:,:)), features_large);
-                       temp = bsxfun(@times, temp, cos_window_large);
-                       samples_large(k,:,:,:) = temp;
+                   if any(~feature_extracted)
+                       [~feature_extracted]'
+                       disp('Learning from new samples')
+                       extract_ind = find(~feature_extracted);
+                       for k=1:numel(extract_ind)
+                           cur_ind = extract_ind(k);
+                           [temp,~] = extract_features(squeeze(samples_patch_large(cur_ind,:,:,:)), features_large);
+                           temp = bsxfun(@times, temp, cos_window_large);
+                           samples_large(cur_ind,:,:,:) = temp;
+                           samplesf_large(cur_ind,:,:,:) = fft2(temp);
+                           samples_feature_extracted(cur_ind) = true;
+                       end
                    end
             end
         end
@@ -296,7 +307,7 @@ for frame = 1:num_frames
                     hf_num = bsxfun(@times, yf, conj(model_xf));
                     hf_den = model_xf .* conj(model_xf);
                 else
-                    samplesf = fft(fft(samples, [], 2), [], 3);
+                    %samplesf = fft(fft(samples, [], 2), [], 3);
                     model_xf = sum(bsxfun(@times, prior_weights(1:num_training_samples), samplesf(1:num_training_samples,:,:,:)), 1);
                     model_xf_den = sum(bsxfun(@times, prior_weights(1:num_training_samples), samplesf(1:num_training_samples,:,:,:).*conj(samplesf(1:num_training_samples,:,:,:))), 1);
                     model_xf = squeeze(model_xf);
@@ -309,9 +320,7 @@ for frame = 1:num_frames
                 %model_xf = sum(bsxfun(@times, prior_weights, samplesf), 1);
                 %model_xf = squeeze(model_xf);
                 %model_xf_den = sum(bsxfun(@times, prior_weights, samplesf.*conj(samplesf)), 1);
-                %model_xf_den = squeeze(model_xf_den);
-                
-                
+                %model_xf_den = squeeze(model_xf_den);              
                 if params.form2
                     model_x = sum(bsxfun(@times, prior_weights, samples), 1);
                     model_x = squeeze(model_x);
@@ -321,7 +330,7 @@ for frame = 1:num_frames
                     hf_num = bsxfun(@times, yf, conj(model_xf));
                     hf_den = model_xf .* conj(model_xf);
                 else
-                    samplesf = fft(fft(samples, [], 2), [], 3);
+                    %samplesf = fft(fft(samples, [], 2), [], 3);
                     model_xf = sum(bsxfun(@times, prior_weights, samplesf), 1);
                     model_xf = squeeze(model_xf);
                     model_xf_den = sum(bsxfun(@times, prior_weights, samplesf.*conj(samplesf)), 1);

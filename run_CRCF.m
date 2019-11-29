@@ -35,8 +35,9 @@ params.scale_model_max_area = 32*16;    % Maximume area for the scale sample pat
 params.scale_lambda = 1e-2;					% Scale filter regularization
 params.do_poly_interp = true;           % Do 2nd order polynomial interpolation to obtain more accurate scale
 
-params.form2 = true;
+params.form2 = false;
 params.search_area_scale = 5;
+params.det_scales = [1, 0.7, 1.2, 0.5, 1.5, 2];
 
 params.target_sz    = [seq.init_rect(1,4), seq.init_rect(1,3)];
 params.init_pos = [seq.init_rect(1,2), seq.init_rect(1,1)] + floor(params.target_sz/2);
