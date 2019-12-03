@@ -35,6 +35,13 @@ output_sigma = sqrt(prod(norm_target_sz)) * output_sigma_factor / cell_size;
 y = gaussian_response(cf_response_sz, output_sigma);
 yf = fft2(y);
 
+det_sz = floor(norm_window_sz_large / cell_size);
+rg           = circshift(-floor((det_sz(1)-1)/2):ceil((det_sz(1)-1)/2), [0 -floor((det_sz(1)-1)/2)]);
+cg           = circshift(-floor((det_sz(2)-1)/2):ceil((det_sz(2)-1)/2), [0 -floor((det_sz(2)-1)/2)]);
+[rs, cs]     = ndgrid( rg,cg);
+y            = exp(-0.5 * (((rs.^2 + cs.^2) / output_sigma^2)));
+yf_detector  = fft2(y); %   FFT of y.
+
 center =(1 + norm_delta_sz) / 2;
 
 cos_window = hann(cf_response_sz(1))*hann(cf_response_sz(2))';
