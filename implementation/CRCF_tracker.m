@@ -36,11 +36,13 @@ y = gaussian_response(cf_response_sz, output_sigma);
 yf = fft2(y);
 
 det_sz = floor(norm_window_sz_large / cell_size);
+params.det_sz = det_sz;
 rg           = circshift(-floor((det_sz(1)-1)/2):ceil((det_sz(1)-1)/2), [0 -floor((det_sz(1)-1)/2)]);
 cg           = circshift(-floor((det_sz(2)-1)/2):ceil((det_sz(2)-1)/2), [0 -floor((det_sz(2)-1)/2)]);
 [rs, cs]     = ndgrid( rg,cg);
 y            = exp(-0.5 * (((rs.^2 + cs.^2) / output_sigma^2)));
 yf_detector  = fft2(y); %   FFT of y.
+params.small_filter_sz = floor(norm_target_sz / cell_size);
 
 center =(1 + norm_delta_sz) / 2;
 
@@ -175,9 +177,11 @@ for frame = 1:num_frames
                 unreliable_flag = true;
             end
             
-            [row, col] = find(response == max(response(:)), 1);
-            old_pos = pos;
-            pos = pos + ([row, col] - center) / norm_resize_factor;
+            if ~unreliable_flag
+                [row, col] = find(response == max(response(:)), 1);
+                old_pos = pos;
+                pos = pos + ([row, col] - center) / norm_resize_factor;
+            end
             
             iter = iter + 1;
         end
@@ -277,6 +281,9 @@ for frame = 1:num_frames
                            samplesf_large(cur_ind,:,:,:) = fft2(temp);
                            samples_feature_extracted(cur_ind) = true;
                        end
+                       
+                       g = detector_train(samplesf_large, yf_detector, num_training_samples, params, prior_weights);
+                       disp('Long term detector learned')
                    end
             else
                    % Extract features
@@ -293,6 +300,9 @@ for frame = 1:num_frames
                            samplesf_large(cur_ind,:,:,:) = fft2(temp);
                            samples_feature_extracted(cur_ind) = true;
                        end
+                       
+                       g = detector_train(samplesf_large, yf_detector, num_training_samples, params, prior_weights);
+                       disp('Long term detector learned')
                    end
             end
         end
