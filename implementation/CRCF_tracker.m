@@ -305,6 +305,41 @@ for frame = 1:num_frames
                        disp('Long term detector learned')
                    end
             end
+            
+            img_sz = floor([size(im, 1), size(im, 2)] * norm_resize_factor);
+            img_det = mexResize(im, img_sz, 'auto');
+            img_det_xt = extract_features(img_det, features_large);
+            img_det_xf = fft2(img_det_xt);
+            img_det_sz = [size(img_det_xt,1), size(img_det_xt,2)];
+            % Insert the center coefficients of g to det_filter
+            det_filter = zeros(size(img_det_xt, 1), size(img_det_xt, 2), 13);
+            [~,~,g_c] = get_subwindow_no_window(g, floor(params.det_sz/2) , params.small_filter_sz);
+            sy = max(floor(size(det_filter, 1)/2) + (1:params.small_filter_sz(1)) - floor(params.small_filter_sz(1)/2),1);
+            sx = max(floor(size(det_filter, 2)/2) + (1:params.small_filter_sz(2)) - floor(params.small_filter_sz(2)/2),1);
+            det_filter(sy, sx,:) = g_c;
+            det_filter_f = fft2(det_filter);
+            response_det = ifft2(sum(conj(det_filter_f).*img_det_xf, 3), 'symmetric');
+            reliability_det = max(response_det(:)) * squeeze(APCE(response_det));
+            
+            if true
+                half_det_sz = [floor(size(img_det_xt,1)/2), floor(size(img_det_xt,2)/2)];
+                ry = half_det_sz(1) + 1 + (-floor((params.small_filter_sz(1)-1)/2):ceil((params.small_filter_sz(1)-1)/2));
+                rx = half_det_sz(2) + 1 + (-floor((params.small_filter_sz(2)-1)/2):ceil((params.small_filter_sz(2)-1)/2));
+
+                min_res = min(response_det(:));
+
+                response_det(ry,:) = min_res;
+                response_det(:,rx) = min_res;
+
+                center_pos = [floor(size(im,1)/2), floor(size(im,2)/2)];
+                max(response_det(:))
+                [row, col] = ind2sub(size(response_det), find(response_det == max(response_det(:)), 1));
+                disp_row = mod(row - 1 + floor((img_det_sz(1)-1)/2), img_det_sz(1)) - floor((img_det_sz(1)-1)/2);
+                disp_col = mod(col - 1 + floor((img_det_sz(2)-1)/2), img_det_sz(2)) - floor((img_det_sz(2)-1)/2);
+                    
+                old_pos = pos;
+                pos = center_pos + floor([disp_row, disp_col]*cell_size/norm_resize_factor);
+            end
         end
         
         if (frame==1||mod(frame, params.train_gap)==0)
