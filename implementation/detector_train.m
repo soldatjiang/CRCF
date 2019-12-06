@@ -26,15 +26,15 @@ function g = detector_train(samplesf_large, yf, num_training_samples, params, pr
     else
         xf_weighted = bsxfun(@times, alpha, xf);
         xf_sum = permute(sum(xf_weighted, 1),[2,3,4,1]);
-        S_xx = sum(conj(xf_weighted) .* xf, 4);
-        %S_xx = sum(conj(xf) .* xf, 4);
+        %S_xx = sum(conj(xf_weighted) .* xf, 4);
+        S_xx = sum(conj(xf) .* xf, 4);
     end
     %S_xx = bsxfun(@times, alpha, S_xx);
     
     if params.form2
         admm_iterations = 2;
     else
-        admm_iterations = 5;
+        admm_iterations = 2;
     end
     
     while (i <= admm_iterations)

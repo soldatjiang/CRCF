@@ -120,6 +120,7 @@ reliability_cf_mean = 0;
 reliability_color_mean = 0;
 reliability_response_mean = 0;
 unreliable_flag = false;
+lt_resp_flag = false;
 
 for frame = 1:num_frames
     im = imread(s_frames{frame});
@@ -139,50 +140,50 @@ for frame = 1:num_frames
             %xt = bsxfun(@times, xt, channel_weights);
             xtf = fft2(xt);
             hf = bsxfun(@rdivide, hf_num, sum(hf_den, 3)+lambda);
-            
+
             response_cf = real(ifft2(sum(hf .* xtf, 3)));
             reliability_cf = max(response_cf(:)) * squeeze(APCE(response_cf));
-            
+
             reliability_cf_mean = (reliability_cf_mean * (frame - 2) + reliability_cf) / (frame - 1);
-            
+
             ratio_cf = reliability_cf / reliability_cf_mean;
 
             colour_map = mexResize(colour_map, norm_likelihood_sz);
             response_color = getCenterLikelihood(colour_map, norm_target_sz);
-            
+
             reliability_color = max(response_color(:)) * squeeze(APCE(response_color));
-            
+
             reliability_color_mean = (reliability_color_mean * (frame - 2) + reliability_color) / (frame - 1);
-            
+
             ratio_color = reliability_color / reliability_color_mean;
 
             %response_cf = sum(response_cf, 3);
             response_cf = crop_response(response_cf, floor_odd(norm_delta_sz / cell_size));
             response_cf = mexResize(response_cf, norm_delta_sz, 'auto');
-            
+
             merge_factor = reliability_color / (reliability_cf + reliability_color);
-            
+
             response = (1 - merge_factor) * response_cf + merge_factor * response_color;
-            
+
             reliability_response = max(response(:)) * squeeze(APCE(response));
-            
+
             reliability_response_mean = (reliability_response_mean * (frame - 2) + reliability_response) / (frame - 1);
-            
+
             ratio_response = reliability_response / reliability_response_mean;
-            
+
             %[ratio_cf, ratio_color, ratio_response] 
-            
+
             if ratio_cf<0.6 && ratio_color<0.7 && ratio_response<0.6
                 fprintf('%d, Unreliable Frame\n', frame);
                 unreliable_flag = true;
             end
-            
+
             if ~unreliable_flag
                 [row, col] = find(response == max(response(:)), 1);
                 old_pos = pos;
                 pos = pos + ([row, col] - center) / norm_resize_factor;
             end
-            
+
             iter = iter + 1;
         end
         
@@ -321,6 +322,13 @@ for frame = 1:num_frames
             response_det = ifft2(sum(conj(det_filter_f).*img_det_xf, 3), 'symmetric');
             reliability_det = max(response_det(:)) * squeeze(APCE(response_det));
             
+            if params.debug
+                if ~lt_resp_flag
+                    lt_resp_handle = figure('Name','Detector Response');
+                    lt_resp_flag = true;
+                end
+            end
+            
             if true
                 half_det_sz = [floor(size(img_det_xt,1)/2), floor(size(img_det_xt,2)/2)];
                 ry = half_det_sz(1) + 1 + (-floor((params.small_filter_sz(1)-1)/2):ceil((params.small_filter_sz(1)-1)/2));
@@ -330,6 +338,12 @@ for frame = 1:num_frames
 
                 response_det(ry,:) = min_res;
                 response_det(:,rx) = min_res;
+                
+                if params.debug
+                    figure(lt_resp_handle)
+                    mesh(fftshift(response_det))
+                    colorbar
+                end
 
                 center_pos = [floor(size(im,1)/2), floor(size(im,2)/2)];
                 max(response_det(:))
@@ -338,7 +352,44 @@ for frame = 1:num_frames
                 disp_col = mod(col - 1 + floor((img_det_sz(2)-1)/2), img_det_sz(2)) - floor((img_det_sz(2)-1)/2);
                     
                 old_pos = pos;
-                pos = center_pos + floor([disp_row, disp_col]*cell_size/norm_resize_factor);
+                det_pos = center_pos + floor([disp_row, disp_col]*cell_size/norm_resize_factor);
+                
+                patch = get_subwindow(im, det_pos, norm_window_sz, window_sz);
+                [xt, colour_map] = extract_features(patch, features);
+                xt = bsxfun(@times, xt, channel_weights);
+                xt = bsxfun(@times, xt, cos_window); 
+                xtf = fft2(xt);
+                hf = bsxfun(@rdivide, hf_num, sum(hf_den, 3)+lambda);
+            
+                response_cf = real(ifft2(sum(hf .* xtf, 3)));
+                reliability_cf = max(response_cf(:)) * squeeze(APCE(response_cf));
+            
+                ratio_cf_det = reliability_cf / reliability_cf_mean;
+
+                colour_map = mexResize(colour_map, norm_likelihood_sz);
+                response_color = getCenterLikelihood(colour_map, norm_target_sz);
+            
+                reliability_color = max(response_color(:)) * squeeze(APCE(response_color));
+            
+                ratio_color_det = reliability_color / reliability_color_mean;
+
+                %response_cf = sum(response_cf, 3);
+                response_cf = crop_response(response_cf, floor_odd(norm_delta_sz / cell_size));
+                response_cf = mexResize(response_cf, norm_delta_sz, 'auto');
+            
+                merge_factor = reliability_color / (reliability_cf + reliability_color);
+                response = (1 - merge_factor) * response_cf + merge_factor * response_color;
+                reliability_response = max(response(:)) * squeeze(APCE(response));
+                
+                ratio_response_det = reliability_response / reliability_response_mean;
+                
+                if ratio_cf_det>ratio_cf && ratio_color_det>ratio_color && ratio_response_det>ratio_response
+                	fprintf('%d, Recovered Frame\n', frame);
+                    unreliable_flag = false;
+                    [row, col] = find(response == max(response(:)), 1);
+                    old_pos = det_pos;
+                    pos = det_pos + ([row, col] - center) / norm_resize_factor;
+                end
             end
         end
         
@@ -492,7 +543,7 @@ for frame = 1:num_frames
                 xs = floor(old_pos(2)) + (1:resp_sz(2)) - floor(resp_sz(2)/2);
                 ys = floor(old_pos(1)) + (1:resp_sz(1)) - floor(resp_sz(1)/2);
                 resp_handle = imagesc(xs, ys, response); colormap hsv;
-                alpha(resp_handle, 0.5);
+                alpha(resp_handle, 0);
                 hold off;
                 if params.visualization_cmap
                     figure(cmap_handle)
