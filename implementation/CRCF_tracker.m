@@ -123,7 +123,7 @@ time = 0;
 %color_score_num = 0;
 %response_score_num = 0;
 unreliable_flag = false;
-%lt_resp_flag = false;
+lt_resp_flag = false;
 
 reliability_set = [];
 reliability_cf_set = [];
@@ -166,15 +166,17 @@ for frame = 1:num_frames
             
             if frame>= params.skip_check_beginning
                 ratio_cf = reliability_cf / mean(reliability_cf_set);
-                flag_cf = (ratio_cf<0.3);
+                flag_cf = (ratio_cf < params.ratio_cf_threshold);
                 ratio_color = reliability_color / mean(reliability_color_set);
-                flag_color = (ratio_color<0.4);
+                flag_color = (ratio_color < params.ratio_color_threshold);
                 ratio_response = reliability_response / mean(reliability_set);
-                flag_response = (ratio_response<0.3);
+                flag_response = (ratio_response < params.ratio_response_threshold);
+                
+                %[ratio_cf ratio_color ratio_response]
 
                 if flag_cf && flag_color && flag_response
                     fprintf('%d, Unreliable Frame\n', frame);
-                    %unreliable_flag = true;
+                    unreliable_flag = true;
                 end
             end
             
@@ -183,15 +185,15 @@ for frame = 1:num_frames
                 reliability_color_set(end+1) = reliability_color;
                 reliability_set(end+1) = reliability_response;
             else
-                if flag_cf
+                if ~flag_cf
                     reliability_cf_set(end+1) = reliability_cf;
                 end
                 
-                if flag_color
+                if ~flag_color
                     reliability_color_set(end+1) = reliability_color;
                 end
                 
-                if flag_response
+                if ~flag_response
                     reliability_color_set(end+1) = reliability_response;
                 end
                 
