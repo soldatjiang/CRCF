@@ -164,7 +164,7 @@ for frame = 1:num_frames
 
             reliability_response = max(response(:)) * squeeze(APCE(response));
             
-            if frame> params.skip_check
+            if frame>= params.skip_check
                 ratio_cf = reliability_cf / mean(reliability_cf_set);
                 flag_cf = (ratio_cf<0.6);
                 ratio_color = reliability_color / mean(reliability_color_set);
@@ -172,7 +172,7 @@ for frame = 1:num_frames
                 ratio_response = reliability_response / mean(reliability_set);
                 flag_response = (ratio_response<0.6);
 
-                if flag_cf && flag_color && ratio_response<0.5
+                if flag_cf && flag_color && flag_response
                     fprintf('%d, Unreliable Frame\n', frame);
                     unreliable_flag = true;
                 end
@@ -183,6 +183,18 @@ for frame = 1:num_frames
                 reliability_color_set(end+1) = reliability_color;
                 reliability_set(end+1) = reliability_response;
             else
+                if flag_cf
+                    reliability_cf_set(end+1) = reliability_cf;
+                end
+                
+                if flag_color
+                    reliability_color_set(end+1) = reliability_color;
+                end
+                
+                if flag_response
+                    reliability_color_set(end+1) = reliability_response;
+                end
+                
                 if numel(reliability_cf_set)>50
                     reliability_cf_set(1) = [];
                 end

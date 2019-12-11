@@ -39,7 +39,9 @@ params.form2 = false;
 params.search_area_scale = 5;
 params.det_scales = [1, 0.7, 1.2, 0.5, 1.5, 2];
 params.admm_lambda = 1e-2;
-params.skip_check = 15;
+params.skip_check_beginning = 5;
+params.redetect_frames = 5;
+params.set_size = 100;
 params.debug = false;
 
 params.target_sz    = [seq.init_rect(1,4), seq.init_rect(1,3)];
