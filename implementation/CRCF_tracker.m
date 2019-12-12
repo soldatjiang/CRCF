@@ -174,7 +174,7 @@ for frame = 1:num_frames
                 
                 %[ratio_cf ratio_color ratio_response]
 
-                if flag_cf && flag_color && flag_response
+                if flag_response
                     fprintf('%d, Unreliable Frame\n', frame);
                     unreliable_flag = true;
                 end
@@ -194,7 +194,7 @@ for frame = 1:num_frames
                 end
                 
                 if ~flag_response
-                    reliability_color_set(end+1) = reliability_response;
+                    reliability_set(end+1) = reliability_response;
                 end
                 
                 if numel(reliability_cf_set)>params.set_size
@@ -215,14 +215,8 @@ for frame = 1:num_frames
                 
                 figure(plt)
                 reliability_plt(end+1) = reliability_response / mean(reliability_set);
-                reliability_cf_plt(end+1) = reliability_cf / mean(reliability_cf_set);
-                reliability_color_plt(end+1) = reliability_color / mean(reliability_color_set);
                 
                 plot(reliability_plt, 'r');
-                hold on
-                plot(reliability_cf_plt, 'g');
-                plot(reliability_color_plt, 'b');
-                hold off;
             end
 
             if ~unreliable_flag
@@ -432,48 +426,16 @@ for frame = 1:num_frames
                 
                 ratio_response_det = reliability_response / mean(reliability_set);
                 
-                if ratio_cf_det>ratio_cf && ratio_color_det>ratio_color && ratio_response_det>ratio_response
-                	fprintf('%d, Recovered Frame\n', frame);
-                    unreliable_flag = false;
+                if ratio_response_det> ratio_response
+                    %unreliable_flag = false;
                     [row, col] = find(response == max(response(:)), 1);
                     old_pos = det_pos;
-                    pos = det_pos + ([row, col] - center) / norm_resize_factor;
-                    
-                    [merged_sample, new_sample, merged_sample_id, new_sample_id, merge_sample_id1, merge_sample_id2, merge_w1, merge_w2, merged_hashcode, new_hashcode, distance_matrix, prior_weights] = ...
-                    update_sample_space_model(samples_patch, patch, distance_matrix, hash_samples, prior_weights, num_training_samples, params);
-
-                    if num_training_samples < params.nSamples
-                        num_training_samples = num_training_samples + 1;
-                    end
-
-                    if merged_sample_id > 0
-                         samples_patch(merged_sample_id,:,:,:) = merged_sample;
-                         samples_large_to_merge1 = samples_patch_large(merge_sample_id1,:,:,:);
-                         if merge_sample_id2==-1
-                             samples_large_to_merge2 = patch_large;
-                         else
-                             samples_large_to_merge2 = samples_patch_large(merge_sample_id2,:,:,:);
-                         end
-                         samples_patch_large(merged_sample_id,:,:,:) = merge_samples(samples_large_to_merge1,samples_large_to_merge2,merge_w1,merge_w2);
-                         samples_feature_extracted(merged_sample_id) = false;
-                         hash_samples(:, merged_sample_id) = merged_hashcode;
-                         [temp, ~] = extract_features(merged_sample, features);
-                         temp = bsxfun(@times, temp, channel_weights);  
-                         temp = bsxfun(@times, temp, cos_window); 
-                         samples(merged_sample_id,:,:,:) = temp;
-                         samplesf(merged_sample_id,:,:,:) = fft2(temp);
-                    end
-                    if new_sample_id > 0
-                         samples_patch(new_sample_id,:,:,:) = new_sample;
-                         samples_patch_large(new_sample_id,:,:,:) = patch_large;
-                         samples_feature_extracted(new_sample_id) = false;
-                         hash_samples(:, new_sample_id) = new_hashcode;
-                         [temp, ~] = extract_features(new_sample, features);
-                         temp = bsxfun(@times, temp, channel_weights);  
-                         temp = bsxfun(@times, temp, cos_window); 
-                         samples(new_sample_id,:,:,:) = temp;
-                         samplesf(new_sample_id,:,:,:) = fft2(temp);
-                    end
+                    pos = det_pos + ([row, col] - center) / norm_resize_factor;       
+                end 
+                
+                if ratio_response_det >= params.ratio_response_threshold
+                    fprintf('%d, Recovered Frame\n', frame);
+                    unreliable_flag = false;
                 end
             end
             
