@@ -42,10 +42,8 @@ params.admm_lambda = 1e-2;
 params.skip_check_beginning = 25;
 params.redetect_frames = 5;
 params.set_size = 50;
-params.debug = true;
+params.debug = false;
 
-params.ratio_cf_threshold = 0.5;
-params.ratio_color_threshold = 0.6;
 params.ratio_response_threshold = 0.3;
 
 params.target_sz    = [seq.init_rect(1,4), seq.init_rect(1,3)];

@@ -50,13 +50,9 @@ cos_window = hann(cf_response_sz(1))*hann(cf_response_sz(2))';
 cos_window_large = hann(floor(norm_window_sz_large(1)/cell_size))*hann(floor(norm_window_sz_large(2)/cell_size))';
 currentScaleFactor = 1.0;
 
-refinement_iteration = 1;
-
 channel_weights(1) = 0.3850; % Gray Feature
 channel_weights(2:14) = 0.3150; % HOG13 Feature
 channel_weights(15) = 0.3; %  CR Feature
-%prior_weights = ones(15,1);
-%prior_weights = prior_weights / sum(prior_weights);
 channel_weights = reshape(channel_weights, 1,1,15);
 
 if params.use_scale_filter
@@ -116,29 +112,24 @@ end
 
 time = 0;
 
-%reliability_cf_mean = 0;
-%reliability_color_mean = 0;
-%reliability_response_mean = 0;
-%cf_score_num = 0;
-%color_score_num = 0;
-%response_score_num = 0;
-unreliable_flag = false;
 lt_resp_flag = false;
 
 reliability_set = [];
-reliability_cf_set = [];
-reliability_color_set = [];
-reliability_plt = [];
-reliability_cf_plt = [];
-reliability_color_plt = [];
+
+if params.debug
+    reliability_plt = [];
+end
+
+lt_state = 1; % ok
+unreliable_flag = false;
+last_ok_frame = 1;
 
 for frame = 1:num_frames
     im = imread(s_frames{frame});
     
     tic();
     if frame>1
-        iter = 1;
-        while iter<=refinement_iteration
+        if lt_state == 1 
             unreliable_flag = false;
             patch = get_subwindow(im, pos, norm_window_sz, window_sz);
             [xt, colour_map] = extract_features(patch, features);
@@ -165,14 +156,8 @@ for frame = 1:num_frames
             reliability_response = max(response(:)) * squeeze(APCE(response));
             
             if frame>= params.skip_check_beginning
-                ratio_cf = reliability_cf / mean(reliability_cf_set);
-                flag_cf = (ratio_cf < params.ratio_cf_threshold);
-                ratio_color = reliability_color / mean(reliability_color_set);
-                flag_color = (ratio_color < params.ratio_color_threshold);
                 ratio_response = reliability_response / mean(reliability_set);
                 flag_response = (ratio_response < params.ratio_response_threshold);
-                
-                %[ratio_cf ratio_color ratio_response]
 
                 if flag_response
                     fprintf('%d, Unreliable Frame\n', frame);
@@ -181,28 +166,12 @@ for frame = 1:num_frames
             end
             
             if frame<params.skip_check_beginning
-                reliability_cf_set(end+1) = reliability_cf;
-                reliability_color_set(end+1) = reliability_color;
                 reliability_set(end+1) = reliability_response;
-            else
-                if ~flag_cf
-                    reliability_cf_set(end+1) = reliability_cf;
-                end
-                
-                if ~flag_color
-                    reliability_color_set(end+1) = reliability_color;
-                end
-                
+            else            
                 if ~flag_response
                     reliability_set(end+1) = reliability_response;
                 end
                 
-                if numel(reliability_cf_set)>params.set_size
-                    reliability_cf_set(1) = [];
-                end
-                if numel(reliability_color_set)>params.set_size
-                    reliability_color_set(1) = [];
-                end
                 if numel(reliability_set)>params.set_size
                     reliability_set(1) = [];
                 end
@@ -224,90 +193,102 @@ for frame = 1:num_frames
                 old_pos = pos;
                 pos = pos + ([row, col] - center) / norm_resize_factor;
             end
-
-            iter = iter + 1;
-        end
         
-        if params.use_scale_filter
+            if params.use_scale_filter
+                if ~unreliable_flag
+                    %create a new feature projection matrix
+                    [xs_pca, xs_npca] = get_scale_subwindow(im,pos,base_target_sz,currentScaleFactor*scaleSizeFactors,scale_model_sz);
+
+                    xs = feature_projection_scale(xs_npca,xs_pca,scale_basis,scale_window);
+                    xsf = fft(xs,[],2);
+
+                    scale_responsef = sum(sf_num .* xsf, 1) ./ (sf_den + scale_lambda);
+
+                    interp_scale_response = ifft( resizeDFT(scale_responsef, nScalesInterp), 'symmetric');
+
+                    recovered_scale_index = find(interp_scale_response == max(interp_scale_response(:)), 1);
+
+                    %set the scale
+                    currentScaleFactor = currentScaleFactor * interpScaleFactors(recovered_scale_index);
+                    %adjust to make sure we are not to large or to small
+                    if currentScaleFactor < min_scale_factor
+                        currentScaleFactor = min_scale_factor;
+                    elseif currentScaleFactor > max_scale_factor
+                        currentScaleFactor = max_scale_factor;
+                    end
+                end
+            end
+
+            target_sz = round(base_target_sz * currentScaleFactor);
+            avg_dim = sum(target_sz)/2;
+            window_sz = round(target_sz + padding*avg_dim);
+            if(window_sz(2)>size(im,2)),  window_sz(2)=size(im,2)-1;    end
+            if(window_sz(1)>size(im,1)),  window_sz(1)=size(im,1)-1;    end
+
+            window_sz = window_sz - mod(window_sz - target_sz, 2);
+
+            norm_resize_factor = sqrt(params.fixed_area/prod(window_sz));  
+        end
+    end
+    
+    if lt_state == 1
+        % If the tracker is tracking and the current detection is reliable,
+        % update the model
+        if ~unreliable_flag
+            features{3} = update_histogram_model(im, pos, target_sz, learning_rate_hist, features{3});
+        end
+        patch = get_subwindow(im, pos, norm_window_sz, window_sz);
+        patch_large = get_subwindow(im, pos, norm_window_sz_large, window_sz_large);
+        if params.gaussian_merge_sample
             if ~unreliable_flag
-                %create a new feature projection matrix
-                [xs_pca, xs_npca] = get_scale_subwindow(im,pos,base_target_sz,currentScaleFactor*scaleSizeFactors,scale_model_sz);
+                [merged_sample, new_sample, merged_sample_id, new_sample_id, merge_sample_id1, merge_sample_id2, merge_w1, merge_w2, merged_hashcode, new_hashcode, distance_matrix, prior_weights] = ...
+                        update_sample_space_model(samples_patch, patch, distance_matrix, hash_samples, prior_weights, num_training_samples, params);
 
-                xs = feature_projection_scale(xs_npca,xs_pca,scale_basis,scale_window);
-                xsf = fft(xs,[],2);
+                if num_training_samples < params.nSamples
+                    num_training_samples = num_training_samples + 1;
+                end
 
-                scale_responsef = sum(sf_num .* xsf, 1) ./ (sf_den + scale_lambda);
-
-                interp_scale_response = ifft( resizeDFT(scale_responsef, nScalesInterp), 'symmetric');
-
-                recovered_scale_index = find(interp_scale_response == max(interp_scale_response(:)), 1);
-
-                %set the scale
-                currentScaleFactor = currentScaleFactor * interpScaleFactors(recovered_scale_index);
-                %adjust to make sure we are not to large or to small
-                if currentScaleFactor < min_scale_factor
-                    currentScaleFactor = min_scale_factor;
-                elseif currentScaleFactor > max_scale_factor
-                    currentScaleFactor = max_scale_factor;
+                if merged_sample_id > 0
+                     samples_patch(merged_sample_id,:,:,:) = merged_sample;
+                     samples_large_to_merge1 = samples_patch_large(merge_sample_id1,:,:,:);
+                     if merge_sample_id2==-1
+                         samples_large_to_merge2 = patch_large;
+                     else
+                         samples_large_to_merge2 = samples_patch_large(merge_sample_id2,:,:,:);
+                     end
+                     samples_patch_large(merged_sample_id,:,:,:) = merge_samples(samples_large_to_merge1,samples_large_to_merge2,merge_w1,merge_w2);
+                     samples_feature_extracted(merged_sample_id) = false;
+                     hash_samples(:, merged_sample_id) = merged_hashcode;
+                     [temp, ~] = extract_features(merged_sample, features);
+                     temp = bsxfun(@times, temp, channel_weights);  
+                     temp = bsxfun(@times, temp, cos_window); 
+                     samples(merged_sample_id,:,:,:) = temp;
+                     samplesf(merged_sample_id,:,:,:) = fft2(temp);
+                end
+                if new_sample_id > 0
+                     samples_patch(new_sample_id,:,:,:) = new_sample;
+                     samples_patch_large(new_sample_id,:,:,:) = patch_large;
+                     samples_feature_extracted(new_sample_id) = false;
+                     hash_samples(:, new_sample_id) = new_hashcode;
+                     [temp, ~] = extract_features(new_sample, features);
+                     temp = bsxfun(@times, temp, channel_weights);  
+                     temp = bsxfun(@times, temp, cos_window); 
+                     samples(new_sample_id,:,:,:) = temp;
+                     samplesf(new_sample_id,:,:,:) = fft2(temp);
                 end
             end
         end
-
-        target_sz = round(base_target_sz * currentScaleFactor);
-        avg_dim = sum(target_sz)/2;
-        window_sz = round(target_sz + padding*avg_dim);
-        if(window_sz(2)>size(im,2)),  window_sz(2)=size(im,2)-1;    end
-        if(window_sz(1)>size(im,1)),  window_sz(1)=size(im,1)-1;    end
-
-        window_sz = window_sz - mod(window_sz - target_sz, 2);
-
-        norm_resize_factor = sqrt(params.fixed_area/prod(window_sz));  
-    end
-    
-    if ~unreliable_flag
-        features{3} = update_histogram_model(im, pos, target_sz, learning_rate_hist, features{3});
-    end
-    patch = get_subwindow(im, pos, norm_window_sz, window_sz);
-    patch_large = get_subwindow(im, pos, norm_window_sz_large, window_sz_large);
-    if params.gaussian_merge_sample
+        
         if ~unreliable_flag
-            [merged_sample, new_sample, merged_sample_id, new_sample_id, merge_sample_id1, merge_sample_id2, merge_w1, merge_w2, merged_hashcode, new_hashcode, distance_matrix, prior_weights] = ...
-                    update_sample_space_model(samples_patch, patch, distance_matrix, hash_samples, prior_weights, num_training_samples, params);
-
-            if num_training_samples < params.nSamples
-                num_training_samples = num_training_samples + 1;
-            end
-
-            if merged_sample_id > 0
-                 samples_patch(merged_sample_id,:,:,:) = merged_sample;
-                 samples_large_to_merge1 = samples_patch_large(merge_sample_id1,:,:,:);
-                 if merge_sample_id2==-1
-                     samples_large_to_merge2 = patch_large;
-                 else
-                     samples_large_to_merge2 = samples_patch_large(merge_sample_id2,:,:,:);
-                 end
-                 samples_patch_large(merged_sample_id,:,:,:) = merge_samples(samples_large_to_merge1,samples_large_to_merge2,merge_w1,merge_w2);
-                 samples_feature_extracted(merged_sample_id) = false;
-                 hash_samples(:, merged_sample_id) = merged_hashcode;
-                 [temp, ~] = extract_features(merged_sample, features);
-                 temp = bsxfun(@times, temp, channel_weights);  
-                 temp = bsxfun(@times, temp, cos_window); 
-                 samples(merged_sample_id,:,:,:) = temp;
-                 samplesf(merged_sample_id,:,:,:) = fft2(temp);
-            end
-            if new_sample_id > 0
-                 samples_patch(new_sample_id,:,:,:) = new_sample;
-                 samples_patch_large(new_sample_id,:,:,:) = patch_large;
-                 samples_feature_extracted(new_sample_id) = false;
-                 hash_samples(:, new_sample_id) = new_hashcode;
-                 [temp, ~] = extract_features(new_sample, features);
-                 temp = bsxfun(@times, temp, channel_weights);  
-                 temp = bsxfun(@times, temp, cos_window); 
-                 samples(new_sample_id,:,:,:) = temp;
-                 samplesf(new_sample_id,:,:,:) = fft2(temp);
-            end
-        else
-            
+            last_ok_frame = frame;
+        end
+        
+        if unreliable_flag && (frame - last_ok_frame)>=5
+            lt_state = 2;
+        end
+    end
+           
+    if lt_state == 2 % perform redtection
             if true
             % Handle unreliable frame
             if num_training_samples < params.nSamples
@@ -363,7 +344,6 @@ for frame = 1:num_frames
             det_filter(sy, sx,:) = g_c;
             det_filter_f = fft2(det_filter);
             response_det = ifft2(sum(conj(det_filter_f).*img_det_xf, 3), 'symmetric');
-            reliability_det = max(response_det(:)) * squeeze(APCE(response_det));
             
             if params.debug
                 if ~lt_resp_flag
@@ -406,16 +386,12 @@ for frame = 1:num_frames
             
                 response_cf = real(ifft2(sum(hf .* xtf, 3)));
                 reliability_cf = max(response_cf(:)) * squeeze(APCE(response_cf));
-            
-                ratio_cf_det = reliability_cf / mean(reliability_cf_set);
 
                 colour_map = mexResize(colour_map, norm_likelihood_sz);
                 response_color = getCenterLikelihood(colour_map, norm_target_sz);
             
                 reliability_color = max(response_color(:)) * squeeze(APCE(response_color));
-            
-                ratio_color_det = reliability_color / mean(reliability_color_set);
-
+           
                 %response_cf = sum(response_cf, 3);
                 response_cf = crop_response(response_cf, floor_odd(norm_delta_sz / cell_size));
                 response_cf = mexResize(response_cf, norm_delta_sz, 'auto');
@@ -435,119 +411,140 @@ for frame = 1:num_frames
                 
                 if ratio_response_det >= params.ratio_response_threshold
                     fprintf('%d, Recovered Frame\n', frame);
-                    unreliable_flag = false;
-                end
-            end
-            
-            end
-        end
-        
-        if (frame==1||mod(frame, params.train_gap)==0)
-            if num_training_samples < params.nSamples
-                %model_xf = sum(bsxfun(@times, prior_weights(1:num_training_samples), samplesf(1:num_training_samples,:,:,:)), 1);
-                %model_xf_den = sum(bsxfun(@times, prior_weights(1:num_training_samples), samplesf(1:num_training_samples,:,:,:).*conj(samplesf(1:num_training_samples,:,:,:))), 1);
-                %model_xf = squeeze(model_xf);
-                %model_xf_den = squeeze(model_xf_den);
-                
-                if params.form2
-                    model_x = sum(bsxfun(@times, prior_weights(1:num_training_samples), samples(1:num_training_samples,:,:,:)), 1);
-                    model_x = squeeze(model_x);
-                    %model_x = bsxfun(@times, model_x, channel_weights);  
-                    %model_x = bsxfun(@times, model_x, cos_window); 
-                    model_xf = fft2(model_x);
-
-                    hf_num = bsxfun(@times, yf, conj(model_xf));
-                    hf_den = model_xf .* conj(model_xf);
-                else
-                    %samplesf = fft(fft(samples, [], 2), [], 3);
-                    model_xf = sum(bsxfun(@times, prior_weights(1:num_training_samples), samplesf(1:num_training_samples,:,:,:)), 1);
-                    model_xf_den = sum(bsxfun(@times, prior_weights(1:num_training_samples), samplesf(1:num_training_samples,:,:,:).*conj(samplesf(1:num_training_samples,:,:,:))), 1);
-                    model_xf = squeeze(model_xf);
-                    model_xf_den = squeeze(model_xf_den);
+                    lt_state = 1;
                     
-                    hf_num = bsxfun(@times, yf, conj(model_xf));
-                    hf_den = model_xf_den;
-                end
-            else
-                %model_xf = sum(bsxfun(@times, prior_weights, samplesf), 1);
-                %model_xf = squeeze(model_xf);
-                %model_xf_den = sum(bsxfun(@times, prior_weights, samplesf.*conj(samplesf)), 1);
-                %model_xf_den = squeeze(model_xf_den);              
-                if params.form2
-                    model_x = sum(bsxfun(@times, prior_weights, samples), 1);
-                    model_x = squeeze(model_x);
-                    %model_x = bsxfun(@times, model_x, channel_weights);  
-                    %model_x = bsxfun(@times, model_x, cos_window); 
-                    model_xf = fft2(model_x);
-                    hf_num = bsxfun(@times, yf, conj(model_xf));
-                    hf_den = model_xf .* conj(model_xf);
-                else
-                    %samplesf = fft(fft(samples, [], 2), [], 3);
-                    model_xf = sum(bsxfun(@times, prior_weights, samplesf), 1);
-                    model_xf = squeeze(model_xf);
-                    model_xf_den = sum(bsxfun(@times, prior_weights, samplesf.*conj(samplesf)), 1);
-                    model_xf_den = squeeze(model_xf_den);
-                    
-                    hf_num = bsxfun(@times, yf, conj(model_xf));
-                    hf_den = model_xf_den;
-                end
-                
-            end
-        end
-    else
-        %new_hf_num = bsxfun(@times, yf, conj(xtf));
-        
-        if frame == 1
-             model_xtf = xtf;
-        else
-             model_xtf = (1 - learning_rate_cf) * model_xtf + learning_rate_cf * xtf;
-        end
-        %new_hf_den = conj(xtf) .* xtf;
-        %S_xx = sum(conj(model_xtf).*model_xtf, 3);
-        %hf = 1/lambda*bsxfun(@times, yf, conj(model_xtf))-bsxfun(@times, (1/lambda^2*S_xx)./(1+1/lambda*S_xx).*yf, conj(model_xtf));
-        new_hf_num = bsxfun(@times, yf, conj(xtf));
-        new_hf_den = conj(xtf) .* xtf;
+                    features{3} = update_histogram_model(im, pos, target_sz, learning_rate_hist, features{3});
+                    patch = get_subwindow(im, pos, norm_window_sz, window_sz);
+                    patch_large = get_subwindow(im, pos, norm_window_sz_large, window_sz_large);
+                    [merged_sample, new_sample, merged_sample_id, new_sample_id, merge_sample_id1, merge_sample_id2, merge_w1, merge_w2, merged_hashcode, new_hashcode, distance_matrix, prior_weights] = ...
+                            update_sample_space_model(samples_patch, patch, distance_matrix, hash_samples, prior_weights, num_training_samples, params);
 
-        if frame == 1
-             hf_num = new_hf_num;
-             hf_den = new_hf_den;
-        else
-             hf_num = (1 - learning_rate_cf) * hf_num + learning_rate_cf * new_hf_num;
-             hf_den = (1 - learning_rate_cf) * hf_den + learning_rate_cf * new_hf_den;
-        end
+                    if num_training_samples < params.nSamples
+                        num_training_samples = num_training_samples + 1;
+                    end
+
+                    if merged_sample_id > 0
+                         samples_patch(merged_sample_id,:,:,:) = merged_sample;
+                         samples_large_to_merge1 = samples_patch_large(merge_sample_id1,:,:,:);
+                         if merge_sample_id2==-1
+                             samples_large_to_merge2 = patch_large;
+                         else
+                             samples_large_to_merge2 = samples_patch_large(merge_sample_id2,:,:,:);
+                         end
+                         samples_patch_large(merged_sample_id,:,:,:) = merge_samples(samples_large_to_merge1,samples_large_to_merge2,merge_w1,merge_w2);
+                         samples_feature_extracted(merged_sample_id) = false;
+                         hash_samples(:, merged_sample_id) = merged_hashcode;
+                         [temp, ~] = extract_features(merged_sample, features);
+                         temp = bsxfun(@times, temp, channel_weights);  
+                         temp = bsxfun(@times, temp, cos_window); 
+                         samples(merged_sample_id,:,:,:) = temp;
+                         samplesf(merged_sample_id,:,:,:) = fft2(temp);
+                    end
+                    if new_sample_id > 0
+                         samples_patch(new_sample_id,:,:,:) = new_sample;
+                         samples_patch_large(new_sample_id,:,:,:) = patch_large;
+                         samples_feature_extracted(new_sample_id) = false;
+                         hash_samples(:, new_sample_id) = new_hashcode;
+                         [temp, ~] = extract_features(new_sample, features);
+                         temp = bsxfun(@times, temp, channel_weights);  
+                         temp = bsxfun(@times, temp, cos_window); 
+                         samples(new_sample_id,:,:,:) = temp;
+                         samplesf(new_sample_id,:,:,:) = fft2(temp);
+                    end
+                end
+            end
+            end
     end
-    
-    if params.use_scale_filter
-        if ~unreliable_flag
-            %create a new feature projection matrix
-            [xs_pca, xs_npca] = get_scale_subwindow(im, pos, base_target_sz, currentScaleFactor*scaleSizeFactors, scale_model_sz);
+       
+    if lt_state == 1 % Update tracker model
+        if params.gaussian_merge_sample
+            if (frame==1||mod(frame, params.train_gap)==0)
+                if num_training_samples < params.nSamples
+                    if params.form2
+                        model_x = sum(bsxfun(@times, prior_weights(1:num_training_samples), samples(1:num_training_samples,:,:,:)), 1);
+                        model_x = squeeze(model_x);
+                        model_xf = fft2(model_x);
 
-            if frame == 1
-                s_num = xs_pca;
-            else
-                s_num = (1 - learning_rate_scale) * s_num + learning_rate_scale * xs_pca;
+                        hf_num = bsxfun(@times, yf, conj(model_xf));
+                        hf_den = model_xf .* conj(model_xf);
+                    else
+                        model_xf = sum(bsxfun(@times, prior_weights(1:num_training_samples), samplesf(1:num_training_samples,:,:,:)), 1);
+                        model_xf_den = sum(bsxfun(@times, prior_weights(1:num_training_samples), samplesf(1:num_training_samples,:,:,:).*conj(samplesf(1:num_training_samples,:,:,:))), 1);
+                        model_xf = squeeze(model_xf);
+                        model_xf_den = squeeze(model_xf_den);
+
+                        hf_num = bsxfun(@times, yf, conj(model_xf));
+                        hf_den = model_xf_den;
+                    end
+                else
+                    if params.form2
+                        model_x = sum(bsxfun(@times, prior_weights, samples), 1);
+                        model_x = squeeze(model_x);
+                        model_xf = fft2(model_x);
+                        hf_num = bsxfun(@times, yf, conj(model_xf));
+                        hf_den = model_xf .* conj(model_xf);
+                    else
+                        model_xf = sum(bsxfun(@times, prior_weights, samplesf), 1);
+                        model_xf = squeeze(model_xf);
+                        model_xf_den = sum(bsxfun(@times, prior_weights, samplesf.*conj(samplesf)), 1);
+                        model_xf_den = squeeze(model_xf_den);
+
+                        hf_num = bsxfun(@times, yf, conj(model_xf));
+                        hf_den = model_xf_den;
+                    end
+
+                end
             end
-
-            bigY = s_num;
-            bigY_den = xs_pca;
-
-            [scale_basis, ~] = qr(bigY, 0);
-            [scale_basis_den, ~] = qr(bigY_den, 0);
-            scale_basis = scale_basis';
-
-            %create the filter update coefficients
-            sf_proj = fft(feature_projection_scale([],s_num,scale_basis,scale_window),[],2);
-            sf_num = bsxfun(@times,ysf,conj(sf_proj));
-
-            xs = feature_projection_scale(xs_npca,xs_pca,scale_basis_den',scale_window);
-            xsf = fft(xs,[],2);
-            new_sf_den = sum(xsf .* conj(xsf),1);
+        else
+            if frame == 1
+                 model_xtf = xtf;
+            else
+                 model_xtf = (1 - learning_rate_cf) * model_xtf + learning_rate_cf * xtf;
+            end
+            new_hf_num = bsxfun(@times, yf, conj(xtf));
+            new_hf_den = conj(xtf) .* xtf;
 
             if frame == 1
-                sf_den = new_sf_den;
+                 hf_num = new_hf_num;
+                 hf_den = new_hf_den;
             else
-                sf_den = (1 - learning_rate_scale) * sf_den + learning_rate_scale * new_sf_den;
-            end;
+                 hf_num = (1 - learning_rate_cf) * hf_num + learning_rate_cf * new_hf_num;
+                 hf_den = (1 - learning_rate_cf) * hf_den + learning_rate_cf * new_hf_den;
+            end
+        end
+    
+        if params.use_scale_filter
+            if ~unreliable_flag
+                %create a new feature projection matrix
+                [xs_pca, xs_npca] = get_scale_subwindow(im, pos, base_target_sz, currentScaleFactor*scaleSizeFactors, scale_model_sz);
+
+                if frame == 1
+                    s_num = xs_pca;
+                else
+                    s_num = (1 - learning_rate_scale) * s_num + learning_rate_scale * xs_pca;
+                end
+
+                bigY = s_num;
+                bigY_den = xs_pca;
+
+                [scale_basis, ~] = qr(bigY, 0);
+                [scale_basis_den, ~] = qr(bigY_den, 0);
+                scale_basis = scale_basis';
+
+                %create the filter update coefficients
+                sf_proj = fft(feature_projection_scale([],s_num,scale_basis,scale_window),[],2);
+                sf_num = bsxfun(@times,ysf,conj(sf_proj));
+
+                xs = feature_projection_scale(xs_npca,xs_pca,scale_basis_den',scale_window);
+                xsf = fft(xs,[],2);
+                new_sf_den = sum(xsf .* conj(xsf),1);
+
+                if frame == 1
+                    sf_den = new_sf_den;
+                else
+                    sf_den = (1 - learning_rate_scale) * sf_den + learning_rate_scale * new_sf_den;
+                end
+            end
         end
     end
 
@@ -630,4 +627,4 @@ function out = APCE(response)
     rmax = max(max(response, [], 1), [], 2);
     rmin = min(min(response, [], 1), [], 2);
     out = (rmax-rmin).^2 ./ (mean(mean((response-rmin).^2, 1), 2) + eps);
-end
+end 
