@@ -334,6 +334,15 @@ for frame = 1:num_frames
             img_sz = floor([size(im, 1), size(im, 2)] * norm_resize_factor);
             img_det = mexResize(im, img_sz, 'auto');
             img_det_xt = extract_features(img_det, features_large);
+            
+            exponent_idx = frame - last_ok_frame - 2;
+            size_factor = 1.05 ^ exponent_idx;
+            sigma_factor = 0.5;
+            [Y_,X_] = ndgrid((1:size(im,1)) - pos(1), (1:size(im,2)) - pos(2));
+            gauss_prior = exp(-0.5 * ( ((Y_.^2)/(sigma_factor * size_factor * target_sz(1))^2) + ((X_.^2)/((sigma_factor * size_factor * target_sz(2))^2)) ) );  
+            G = mexResize(gauss_prior, [size(img_det_xt,1), size(img_det_xt, 2)], 'auto');
+            img_det_xt = bsxfun(@times, img_det_xt, G);            
+            
             img_det_xf = fft2(img_det_xt);
             img_det_sz = [size(img_det_xt,1), size(img_det_xt,2)];
             % Insert the center coefficients of g to det_filter
@@ -343,6 +352,7 @@ for frame = 1:num_frames
             sx = max(floor(size(det_filter, 2)/2) + (1:params.small_filter_sz(2)) - floor(params.small_filter_sz(2)/2),1);
             det_filter(sy, sx,:) = g_c;
             det_filter_f = fft2(det_filter);
+            
             response_det = ifft2(sum(conj(det_filter_f).*img_det_xf, 3), 'symmetric');
             
             if params.debug
