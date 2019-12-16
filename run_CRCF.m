@@ -43,7 +43,7 @@ params.det_scales = [1];
 params.admm_lambda = 1e-2;
 params.skip_check_beginning = 25;
 params.redetect_frames = 5;
-params.set_size = 50;
+params.set_size = 100;
 params.debug = false;
 
 params.ratio_cf_threshold = 0.3;
