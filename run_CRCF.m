@@ -23,6 +23,7 @@ params.features{2} = struct('name', 'hog13', 'dim', 13);
 params.features{3} = struct('name', 'cr', 'dim', 1, 'target_model', [], 'candidate_model', []);
 
 params.features_large{1} = struct('name', 'hog13', 'dim', 13);
+params.features_large{2} = struct('name', 'gray', 'dim', 1);
 
 params.use_scale_filter = true;
 params.scale_sigma_factor = 1/16;       % Scale label function sigma
@@ -37,14 +38,20 @@ params.do_poly_interp = true;           % Do 2nd order polynomial interpolation 
 
 params.form2 = false;
 params.search_area_scale = 5;
-params.det_scales = [1, 0.7, 1.2, 0.5, 1.5, 2];
+%params.det_scales = [1, 0.9, 1.1, 0.8, 1.2, 1.3];
+params.det_scales = [1];
 params.admm_lambda = 1e-2;
 params.skip_check_beginning = 25;
 params.redetect_frames = 5;
 params.set_size = 50;
 params.debug = false;
 
+params.ratio_cf_threshold = 0.3;
+params.ratio_color_threshold = 0.6;
 params.ratio_response_threshold = 0.3;
+
+params.threshold_lost = 1.2;
+params.threshold_recover = 1.5;
 
 params.target_sz    = [seq.init_rect(1,4), seq.init_rect(1,3)];
 params.init_pos = [seq.init_rect(1,2), seq.init_rect(1,1)] + floor(params.target_sz/2);

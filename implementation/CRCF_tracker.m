@@ -102,9 +102,9 @@ if params.gaussian_merge_sample
     samples_patch_large = zeros(params.nSamples, norm_window_sz_large(1), norm_window_sz_large(2), size(im, 3), 'uint8');
     samples_feature_extracted = false(params.nSamples,1);
     samples = zeros(params.nSamples, floor(norm_window_sz(1)/cell_size), floor(norm_window_sz(2)/cell_size), 15, 'single');
-    samples_large = zeros(params.nSamples, floor(norm_window_sz_large(1)/cell_size), floor(norm_window_sz_large(2)/cell_size), 13, 'single');
+    samples_large = zeros(params.nSamples, floor(norm_window_sz_large(1)/cell_size), floor(norm_window_sz_large(2)/cell_size), 14, 'single');
     samplesf = zeros(params.nSamples, floor(norm_window_sz(1)/cell_size), floor(norm_window_sz(2)/cell_size), 15, 'like', params.data_type_complex);
-    samplesf_large = zeros(params.nSamples, floor(norm_window_sz_large(1)/cell_size), floor(norm_window_sz_large(2)/cell_size), 13, 'like', params.data_type_complex);
+    samplesf_large = zeros(params.nSamples, floor(norm_window_sz_large(1)/cell_size), floor(norm_window_sz_large(2)/cell_size), 14, 'like', params.data_type_complex);
     params.minimum_sample_weight = params.learning_rate*(1-params.learning_rate)^(2*params.nSamples);
     prior_weights = zeros(params.nSamples,1);
     num_training_samples = 0;
@@ -114,15 +114,20 @@ time = 0;
 
 lt_resp_flag = false;
 
+reliability_cf_set = [];
+reliability_color_set = [];
 reliability_set = [];
 
 if params.debug
     reliability_plt = [];
+    reliability_cf_plt = [];
+    reliability_color_plt = [];
 end
 
 lt_state = 1; % ok
 unreliable_flag = false;
 last_ok_frame = 1;
+det_scale_idx = 1;
 
 for frame = 1:num_frames
     im = imread(s_frames{frame});
@@ -157,36 +162,65 @@ for frame = 1:num_frames
             
             if frame>= params.skip_check_beginning
                 ratio_response = reliability_response / mean(reliability_set);
-                flag_response = (ratio_response < params.ratio_response_threshold);
+                ratio_cf = reliability_cf / mean(reliability_cf_set);
+                ratio_color = reliability_color / mean(reliability_color_set);
+                
+                if params.debug
+                    if ~exist('plt','var')
+                        plt = figure('Name','Ratio');
+                    end
+                
+                    figure(plt)
+                    reliability_plt(end+1) = ratio_cf + ratio_color + ratio_response;;
+                
+                    plot(reliability_plt, 'r');
+                    hold off;
+                end
+                
+%                 cnt = 0;
+%                 if flag_cf
+%                     cnt = cnt + 1;
+%                 end
+%                 
+%                 if flag_color
+%                     cnt = cnt + 1;
+%                 end
+%                 
+%                 if flag_response
+%                     cnt = cnt + 1;
+%                 end
+                ratio = ratio_cf + ratio_color + ratio_response;
 
-                if flag_response
+                if ratio < params.threshold_lost
                     fprintf('%d, Unreliable Frame\n', frame);
                     unreliable_flag = true;
                 end
             end
             
             if frame<params.skip_check_beginning
+                reliability_cf_set(end+1) = reliability_cf;
+                reliability_color_set(end+1) = reliability_color;
                 reliability_set(end+1) = reliability_response;
             else            
-                if ~flag_response
+                if ~unreliable_flag
                     reliability_set(end+1) = reliability_response;
+                    reliability_cf_set(end+1) = reliability_cf;
+                    reliability_color_set(end+1) = reliability_color;
                 end
                 
                 if numel(reliability_set)>params.set_size
                     reliability_set(1) = [];
                 end
-            end
-            
-            if params.debug
-                if numel(reliability_set)==1
-                    plt = figure('Name','Ratio');
+                
+                if numel(reliability_cf_set)>params.set_size
+                    reliability_cf_set(1) = [];
                 end
                 
-                figure(plt)
-                reliability_plt(end+1) = reliability_response / mean(reliability_set);
-                
-                plot(reliability_plt, 'r');
+                if numel(reliability_color_set)>params.set_size
+                    reliability_color_set(1) = [];
+                end
             end
+           
 
             if ~unreliable_flag
                 [row, col] = find(response == max(response(:)), 1);
@@ -225,7 +259,7 @@ for frame = 1:num_frames
             if(window_sz(2)>size(im,2)),  window_sz(2)=size(im,2)-1;    end
             if(window_sz(1)>size(im,1)),  window_sz(1)=size(im,1)-1;    end
 
-            window_sz = window_sz - mod(window_sz - target_sz, 2);
+            %window_sz = window_sz - mod(window_sz - target_sz, 2);
 
             norm_resize_factor = sqrt(params.fixed_area/prod(window_sz));  
         end
@@ -331,7 +365,7 @@ for frame = 1:num_frames
                    end
             end
             
-            img_sz = floor([size(im, 1), size(im, 2)] * norm_resize_factor);
+            img_sz = floor([size(im, 1), size(im, 2)] * norm_resize_factor * params.det_scales(det_scale_idx));
             img_det = mexResize(im, img_sz, 'auto');
             img_det_xt = extract_features(img_det, features_large);
             
@@ -346,7 +380,7 @@ for frame = 1:num_frames
             img_det_xf = fft2(img_det_xt);
             img_det_sz = [size(img_det_xt,1), size(img_det_xt,2)];
             % Insert the center coefficients of g to det_filter
-            det_filter = zeros(size(img_det_xt, 1), size(img_det_xt, 2), 13);
+            det_filter = zeros(size(img_det_xt, 1), size(img_det_xt, 2), 14);
             [~,~,g_c] = get_subwindow_no_window(g, floor(params.det_sz/2) , params.small_filter_sz);
             sy = max(floor(size(det_filter, 1)/2) + (1:params.small_filter_sz(1)) - floor(params.small_filter_sz(1)/2),1);
             sx = max(floor(size(det_filter, 2)/2) + (1:params.small_filter_sz(2)) - floor(params.small_filter_sz(2)/2),1);
@@ -385,14 +419,19 @@ for frame = 1:num_frames
                 disp_col = mod(col - 1 + floor((img_det_sz(2)-1)/2), img_det_sz(2)) - floor((img_det_sz(2)-1)/2);
                     
                 old_pos = pos;
-                det_pos = center_pos + floor([disp_row, disp_col]*cell_size/norm_resize_factor);
+                det_pos = center_pos + floor([disp_row, disp_col]*cell_size/(norm_resize_factor * params.det_scales(det_scale_idx)));
                 
-                patch = get_subwindow(im, det_pos, norm_window_sz, window_sz);
+                patch = get_subwindow(im, det_pos, norm_window_sz, floor(window_sz * params.det_scales(det_scale_idx)));
                 [xt, colour_map] = extract_features(patch, features);
                 xt = bsxfun(@times, xt, channel_weights);
                 xt = bsxfun(@times, xt, cos_window); 
                 xtf = fft2(xt);
                 hf = bsxfun(@rdivide, hf_num, sum(hf_den, 3)+lambda);
+                
+                det_scale_idx = det_scale_idx + 1;
+                if det_scale_idx > numel(params.det_scales)
+                    det_scale_idx = 1;
+                end
             
                 response_cf = real(ifft2(sum(hf .* xtf, 3)));
                 reliability_cf = max(response_cf(:)) * squeeze(APCE(response_cf));
@@ -411,17 +450,42 @@ for frame = 1:num_frames
                 reliability_response = max(response(:)) * squeeze(APCE(response));
                 
                 ratio_response_det = reliability_response / mean(reliability_set);
+                ratio_cf_det = reliability_cf / mean(reliability_cf_set);
+                ratio_color_det = reliability_color / mean(reliability_color_set);
                 
-                if ratio_response_det> ratio_response
+                ratio_det = ratio_cf_det + ratio_color_det + ratio_response_det;
+                
+                if ratio_det> ratio
                     %unreliable_flag = false;
                     [row, col] = find(response == max(response(:)), 1);
                     old_pos = det_pos;
                     pos = det_pos + ([row, col] - center) / norm_resize_factor;       
                 end 
                 
-                if ratio_response_det >= params.ratio_response_threshold
+                if ratio_det >= params.threshold_recover
                     fprintf('%d, Recovered Frame\n', frame);
                     lt_state = 1;
+                    last_ok_frame = frame;
+                    
+                    currentScaleFactor = currentScaleFactor * params.det_scales(det_scale_idx);
+                    det_scale_idx = 1;
+                    
+                    %adjust to make sure we are not to large or to small
+                    if currentScaleFactor < min_scale_factor
+                        currentScaleFactor = min_scale_factor;
+                    elseif currentScaleFactor > max_scale_factor
+                        currentScaleFactor = max_scale_factor;
+                    end
+
+                    target_sz = round(base_target_sz * currentScaleFactor);
+                    avg_dim = sum(target_sz)/2;
+                    window_sz = round(target_sz + padding*avg_dim);
+                    if(window_sz(2)>size(im,2)),  window_sz(2)=size(im,2)-1;    end
+                    if(window_sz(1)>size(im,1)),  window_sz(1)=size(im,1)-1;    end
+
+                    %window_sz = window_sz - mod(window_sz - target_sz, 2);
+
+                    norm_resize_factor = sqrt(params.fixed_area/prod(window_sz));
                     
                     features{3} = update_histogram_model(im, pos, target_sz, learning_rate_hist, features{3});
                     patch = get_subwindow(im, pos, norm_window_sz, window_sz);
