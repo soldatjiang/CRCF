@@ -189,9 +189,11 @@ for frame = 1:num_frames
 %                 if flag_response
 %                     cnt = cnt + 1;
 %                 end
-                ratio = ratio_cf + ratio_color + ratio_response;
+                flag_cf = (ratio_cf < params.ratio_cf_threshold);
+                flag_color = (ratio_color < params.ratio_color_threshold);
+                flag_response = (ratio_response < params.ratio_response_threshold);
 
-                if ratio < params.threshold_lost
+                if flag_cf && flag_color && flag_response
                     fprintf('%d, Unreliable Frame\n', frame);
                     unreliable_flag = true;
                 end
@@ -453,16 +455,18 @@ for frame = 1:num_frames
                 ratio_cf_det = reliability_cf / mean(reliability_cf_set);
                 ratio_color_det = reliability_color / mean(reliability_color_set);
                 
-                ratio_det = ratio_cf_det + ratio_color_det + ratio_response_det;
+                flag_cf_det = (ratio_cf_det >= params.ratio_cf_threshold_recover);
+                flag_color_det = (ratio_color_det >= params.ratio_color_threshold_recover);
+                flag_response_det = (ratio_response_det >= params.ratio_response_threshold_recover);
                 
-                if ratio_det> ratio
+                if ratio_response_det> ratio_response
                     %unreliable_flag = false;
                     [row, col] = find(response == max(response(:)), 1);
                     old_pos = det_pos;
                     pos = det_pos + ([row, col] - center) / norm_resize_factor;       
                 end 
                 
-                if ratio_det >= params.threshold_recover
+                if flag_cf_det && flag_color_det && flag_response_det
                     fprintf('%d, Recovered Frame\n', frame);
                     lt_state = 1;
                     last_ok_frame = frame;

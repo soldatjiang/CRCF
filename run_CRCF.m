@@ -38,17 +38,21 @@ params.do_poly_interp = true;           % Do 2nd order polynomial interpolation 
 
 params.form2 = false;
 params.search_area_scale = 5;
-%params.det_scales = [1, 0.9, 1.1, 0.8, 1.2, 1.3];
-params.det_scales = [1];
+params.det_scales = [1, 0.9, 1.1, 0.8, 1.2, 1.3];
+%params.det_scales = [1];
 params.admm_lambda = 1e-2;
 params.skip_check_beginning = 25;
 params.redetect_frames = 5;
 params.set_size = 100;
 params.debug = false;
 
-params.ratio_cf_threshold = 0.3;
-params.ratio_color_threshold = 0.6;
-params.ratio_response_threshold = 0.3;
+params.ratio_cf_threshold = 0.6;
+params.ratio_color_threshold = 0.7;
+params.ratio_response_threshold = 0.6;
+
+params.ratio_cf_threshold_recover = 0.6;
+params.ratio_color_threshold_recover = 0.7;
+params.ratio_response_threshold_recover = 0.6;
 
 params.threshold_lost = 1.2;
 params.threshold_recover = 1.5;
