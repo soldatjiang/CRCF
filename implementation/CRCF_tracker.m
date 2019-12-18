@@ -170,7 +170,7 @@ for frame = 1:num_frames
                 end
 
                 figure(plt)
-                reliability_plt(end+1) = ratio_cf + ratio_color + ratio_response;;
+                reliability_plt(end+1) = ratio_cf + ratio_color + ratio_response;
 
                 plot(reliability_plt, 'r');
                 hold off;
@@ -181,7 +181,7 @@ for frame = 1:num_frames
             flag_response = (ratio_response < params.ratio_response_threshold);
 
             if flag_cf && flag_color && flag_response
-                fprintf('%d, Unreliable Frame\n', frame);
+                %fprintf('%d, Unreliable Frame\n', frame);
                 unreliable_flag = true;
             end
         end
@@ -323,8 +323,8 @@ for frame = 1:num_frames
                    % Extract features
                    feature_extracted = samples_feature_extracted(1:num_training_samples);
                    if any(~feature_extracted)
-                       [~feature_extracted]'
-                       disp('Learning from new samples')
+                       %[~feature_extracted]'
+                       %disp('Learning from new samples')
                        extract_ind = find(~feature_extracted);
                        for k=1:numel(extract_ind)
                            cur_ind = extract_ind(k);
@@ -336,14 +336,14 @@ for frame = 1:num_frames
                        end
                        
                        g = detector_train(samplesf_large, yf_detector, num_training_samples, params, prior_weights);
-                       disp('Long term detector learned')
+                       %disp('Long term detector learned')
                    end
             else
                    % Extract features
                    feature_extracted = samples_feature_extracted;
                    if any(~feature_extracted)
-                       [~feature_extracted]'
-                       disp('Learning from new samples')
+                       %[~feature_extracted]'
+                       %disp('Learning from new samples')
                        extract_ind = find(~feature_extracted);
                        for k=1:numel(extract_ind)
                            cur_ind = extract_ind(k);
@@ -355,7 +355,7 @@ for frame = 1:num_frames
                        end
                        
                        g = detector_train(samplesf_large, yf_detector, num_training_samples, params, prior_weights);
-                       disp('Long term detector learned')
+                       %disp('Long term detector learned')
                    end
             end
             
@@ -407,7 +407,7 @@ for frame = 1:num_frames
                 end
 
                 center_pos = [floor(size(im,1)/2), floor(size(im,2)/2)];
-                max(response_det(:))
+                %max(response_det(:))
                 [row, col] = ind2sub(size(response_det), find(response_det == max(response_det(:)), 1));
                 disp_row = mod(row - 1 + floor((img_det_sz(1)-1)/2), img_det_sz(1)) - floor((img_det_sz(1)-1)/2);
                 disp_col = mod(col - 1 + floor((img_det_sz(2)-1)/2), img_det_sz(2)) - floor((img_det_sz(2)-1)/2);
@@ -441,7 +441,7 @@ for frame = 1:num_frames
             
                 merge_factor = reliability_color / (reliability_cf + reliability_color);
                 response_det = (1 - merge_factor) * response_cf + merge_factor * response_color;
-                reliability_response_det = max(response(:)) * squeeze(APCE(response));
+                reliability_response_det = max(response_det(:)) * squeeze(APCE(response_det));
                 
                 ratio_response_det = reliability_response_det / mean(reliability_set);
                 ratio_cf_det = reliability_cf_det / mean(reliability_cf_set);
@@ -451,7 +451,13 @@ for frame = 1:num_frames
                 flag_color_det = (ratio_color_det >= params.ratio_color_threshold_recover);
                 flag_response_det = (ratio_response_det >= params.ratio_response_threshold_recover);
                 
-                if reliability_response_det * cos(pi/9/sum(norm_target_sz)*sum((det_pos-pos).^2)) > reliability_response
+                dist_panelty = cos(pi/9/sum(norm_target_sz)*sqrt(sum((det_pos-pos).^2)));
+                
+                %reliability_response_det = reliability_response_det * dist_panelty;
+                %reliability_cf_det = reliability_cf_det * dist_panelty;
+                %reliability_color_det = reliability_color_det * dist_panelty;
+                
+                if reliability_response_det * dist_panelty > reliability_response
                     %unreliable_flag = false;
                     [row, col] = find(response == max(response(:)), 1);
                     old_pos = det_pos;
@@ -459,7 +465,7 @@ for frame = 1:num_frames
                 end 
                 
                 if flag_cf_det && flag_color_det && flag_response_det
-                    fprintf('%d, Recovered Frame\n', frame);
+                    %fprintf('%d, Recovered Frame\n', frame);
                     lt_state = 1;
                     last_ok_frame = frame;
                     
@@ -472,7 +478,7 @@ for frame = 1:num_frames
                     elseif currentScaleFactor > max_scale_factor
                         currentScaleFactor = max_scale_factor;
                     end
-
+                    
                     target_sz = round(base_target_sz * currentScaleFactor);
                     avg_dim = sum(target_sz)/2;
                     window_sz = round(target_sz + padding*avg_dim);
@@ -645,7 +651,7 @@ for frame = 1:num_frames
             hold off;
             axis off;axis image;set(gca, 'Units', 'normalized', 'Position', [0 0 1 1])
             if params.visualization_cmap
-                cmap_handle = figure('Name', 'Color map')
+                cmap_handle = figure('Name', 'Color map');
             end
         else
             try  %subsequent frames, update GUI
