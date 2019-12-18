@@ -428,34 +428,34 @@ for frame = 1:num_frames
                 end
             
                 response_cf = real(ifft2(sum(hf .* xtf, 3)));
-                reliability_cf = max(response_cf(:)) * squeeze(APCE(response_cf));
+                reliability_cf_det = max(response_cf(:)) * squeeze(APCE(response_cf));
 
                 colour_map = mexResize(colour_map, norm_likelihood_sz);
                 response_color = getCenterLikelihood(colour_map, norm_target_sz);
             
-                reliability_color = max(response_color(:)) * squeeze(APCE(response_color));
+                reliability_color_det = max(response_color(:)) * squeeze(APCE(response_color));
            
                 %response_cf = sum(response_cf, 3);
                 response_cf = crop_response(response_cf, floor_odd(norm_delta_sz / cell_size));
                 response_cf = mexResize(response_cf, norm_delta_sz, 'auto');
             
                 merge_factor = reliability_color / (reliability_cf + reliability_color);
-                response = (1 - merge_factor) * response_cf + merge_factor * response_color;
-                reliability_response = max(response(:)) * squeeze(APCE(response));
+                response_det = (1 - merge_factor) * response_cf + merge_factor * response_color;
+                reliability_response_det = max(response(:)) * squeeze(APCE(response));
                 
-                ratio_response_det = reliability_response / mean(reliability_set);
-                ratio_cf_det = reliability_cf / mean(reliability_cf_set);
-                ratio_color_det = reliability_color / mean(reliability_color_set);
+                ratio_response_det = reliability_response_det / mean(reliability_set);
+                ratio_cf_det = reliability_cf_det / mean(reliability_cf_set);
+                ratio_color_det = reliability_color_det / mean(reliability_color_set);
                 
                 flag_cf_det = (ratio_cf_det >= params.ratio_cf_threshold_recover);
                 flag_color_det = (ratio_color_det >= params.ratio_color_threshold_recover);
                 flag_response_det = (ratio_response_det >= params.ratio_response_threshold_recover);
                 
-                if ratio_response_det> ratio_response && ratio_cf_det>ratio_cf && ratio_color_det>ratio_color
+                if reliability_response_det * cos(pi/9/sum(norm_target_sz)*sum((det_pos-pos).^2)) > reliability_response
                     %unreliable_flag = false;
                     [row, col] = find(response == max(response(:)), 1);
                     old_pos = det_pos;
-                    pos = det_pos + ([row, col] - center) / norm_resize_factor;       
+                    pos = det_pos + ([row, col] - center) / norm_resize_factor; 
                 end 
                 
                 if flag_cf_det && flag_color_det && flag_response_det
