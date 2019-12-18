@@ -50,9 +50,9 @@ params.ratio_cf_threshold = 0.6;
 params.ratio_color_threshold = 0.7;
 params.ratio_response_threshold = 0.6;
 
-params.ratio_cf_threshold_recover = 0.6;
-params.ratio_color_threshold_recover = 0.7;
-params.ratio_response_threshold_recover = 0.6;
+params.ratio_cf_threshold_recover = 0.7;
+params.ratio_color_threshold_recover = 0.8;
+params.ratio_response_threshold_recover = 0.7;
 
 params.threshold_lost = 1.2;
 params.threshold_recover = 1.5;

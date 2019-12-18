@@ -134,137 +134,129 @@ for frame = 1:num_frames
     
     tic();
     if frame>1
-        if lt_state == 1 
-            unreliable_flag = false;
-            patch = get_subwindow(im, pos, norm_window_sz, window_sz);
-            [xt, colour_map] = extract_features(patch, features);
-            xt = bsxfun(@times, xt, channel_weights);
-            xt = bsxfun(@times, xt, cos_window); 
-            xtf = fft2(xt);
-            hf = bsxfun(@rdivide, hf_num, sum(hf_den, 3)+lambda);
+        unreliable_flag = false;
+        patch = get_subwindow(im, pos, norm_window_sz, window_sz);
+        [xt, colour_map] = extract_features(patch, features);
+        xt = bsxfun(@times, xt, channel_weights);
+        xt = bsxfun(@times, xt, cos_window); 
+        xtf = fft2(xt);
+        hf = bsxfun(@rdivide, hf_num, sum(hf_den, 3)+lambda);
 
-            response_cf = real(ifft2(sum(hf .* xtf, 3)));
-            reliability_cf = max(response_cf(:)) * squeeze(APCE(response_cf));
+        response_cf = real(ifft2(sum(hf .* xtf, 3)));
+        reliability_cf = max(response_cf(:)) * squeeze(APCE(response_cf));
 
-            colour_map = mexResize(colour_map, norm_likelihood_sz);
-            response_color = getCenterLikelihood(colour_map, norm_target_sz);
+        colour_map = mexResize(colour_map, norm_likelihood_sz);
+        response_color = getCenterLikelihood(colour_map, norm_target_sz);
 
-            reliability_color = max(response_color(:)) * squeeze(APCE(response_color));
+        reliability_color = max(response_color(:)) * squeeze(APCE(response_color));
 
-            response_cf = crop_response(response_cf, floor_odd(norm_delta_sz / cell_size));
-            response_cf = mexResize(response_cf, norm_delta_sz, 'auto');
+        response_cf = crop_response(response_cf, floor_odd(norm_delta_sz / cell_size));
+        response_cf = mexResize(response_cf, norm_delta_sz, 'auto');
 
-            merge_factor = reliability_color / (reliability_cf + reliability_color);
+        merge_factor = reliability_color / (reliability_cf + reliability_color);
 
-            response = (1 - merge_factor) * response_cf + merge_factor * response_color;
+        response = (1 - merge_factor) * response_cf + merge_factor * response_color;
 
-            reliability_response = max(response(:)) * squeeze(APCE(response));
-            
-            if frame>= params.skip_check_beginning
-                ratio_response = reliability_response / mean(reliability_set);
-                ratio_cf = reliability_cf / mean(reliability_cf_set);
-                ratio_color = reliability_color / mean(reliability_color_set);
-                
-                if params.debug
-                    if ~exist('plt','var')
-                        plt = figure('Name','Ratio');
-                    end
-                
-                    figure(plt)
-                    reliability_plt(end+1) = ratio_cf + ratio_color + ratio_response;;
-                
-                    plot(reliability_plt, 'r');
-                    hold off;
+        reliability_response = max(response(:)) * squeeze(APCE(response));
+
+        if frame>= params.skip_check_beginning
+            ratio_response = reliability_response / mean(reliability_set);
+            ratio_cf = reliability_cf / mean(reliability_cf_set);
+            ratio_color = reliability_color / mean(reliability_color_set);
+
+            if params.debug
+                if ~exist('plt','var')
+                    plt = figure('Name','Ratio');
                 end
-                
-%                 cnt = 0;
-%                 if flag_cf
-%                     cnt = cnt + 1;
-%                 end
-%                 
-%                 if flag_color
-%                     cnt = cnt + 1;
-%                 end
-%                 
-%                 if flag_response
-%                     cnt = cnt + 1;
-%                 end
-                flag_cf = (ratio_cf < params.ratio_cf_threshold);
-                flag_color = (ratio_color < params.ratio_color_threshold);
-                flag_response = (ratio_response < params.ratio_response_threshold);
 
-                if flag_cf && flag_color && flag_response
-                    fprintf('%d, Unreliable Frame\n', frame);
-                    unreliable_flag = true;
-                end
-            end
-            
-            if frame<params.skip_check_beginning
-                reliability_cf_set(end+1) = reliability_cf;
-                reliability_color_set(end+1) = reliability_color;
-                reliability_set(end+1) = reliability_response;
-            else            
-                if ~unreliable_flag
-                    reliability_set(end+1) = reliability_response;
-                    reliability_cf_set(end+1) = reliability_cf;
-                    reliability_color_set(end+1) = reliability_color;
-                end
-                
-                if numel(reliability_set)>params.set_size
-                    reliability_set(1) = [];
-                end
-                
-                if numel(reliability_cf_set)>params.set_size
-                    reliability_cf_set(1) = [];
-                end
-                
-                if numel(reliability_color_set)>params.set_size
-                    reliability_color_set(1) = [];
-                end
-            end
-           
+                figure(plt)
+                reliability_plt(end+1) = ratio_cf + ratio_color + ratio_response;;
 
-            if ~unreliable_flag
-                [row, col] = find(response == max(response(:)), 1);
-                old_pos = pos;
-                pos = pos + ([row, col] - center) / norm_resize_factor;
-            end
-        
-            if params.use_scale_filter
-                if ~unreliable_flag
-                    %create a new feature projection matrix
-                    [xs_pca, xs_npca] = get_scale_subwindow(im,pos,base_target_sz,currentScaleFactor*scaleSizeFactors,scale_model_sz);
-
-                    xs = feature_projection_scale(xs_npca,xs_pca,scale_basis,scale_window);
-                    xsf = fft(xs,[],2);
-
-                    scale_responsef = sum(sf_num .* xsf, 1) ./ (sf_den + scale_lambda);
-
-                    interp_scale_response = ifft( resizeDFT(scale_responsef, nScalesInterp), 'symmetric');
-
-                    recovered_scale_index = find(interp_scale_response == max(interp_scale_response(:)), 1);
-
-                    %set the scale
-                    currentScaleFactor = currentScaleFactor * interpScaleFactors(recovered_scale_index);
-                    %adjust to make sure we are not to large or to small
-                    if currentScaleFactor < min_scale_factor
-                        currentScaleFactor = min_scale_factor;
-                    elseif currentScaleFactor > max_scale_factor
-                        currentScaleFactor = max_scale_factor;
-                    end
-                end
+                plot(reliability_plt, 'r');
+                hold off;
             end
 
-            target_sz = round(base_target_sz * currentScaleFactor);
-            avg_dim = sum(target_sz)/2;
-            window_sz = round(target_sz + padding*avg_dim);
-            if(window_sz(2)>size(im,2)),  window_sz(2)=size(im,2)-1;    end
-            if(window_sz(1)>size(im,1)),  window_sz(1)=size(im,1)-1;    end
+            flag_cf = (ratio_cf < params.ratio_cf_threshold);
+            flag_color = (ratio_color < params.ratio_color_threshold);
+            flag_response = (ratio_response < params.ratio_response_threshold);
 
-            %window_sz = window_sz - mod(window_sz - target_sz, 2);
-
-            norm_resize_factor = sqrt(params.fixed_area/prod(window_sz));  
+            if flag_cf && flag_color && flag_response
+                fprintf('%d, Unreliable Frame\n', frame);
+                unreliable_flag = true;
+            end
         end
+
+        if frame<params.skip_check_beginning
+            reliability_cf_set(end+1) = reliability_cf;
+            reliability_color_set(end+1) = reliability_color;
+            reliability_set(end+1) = reliability_response;
+        else            
+            if ~flag_response
+                reliability_set(end+1) = reliability_response;
+            end
+
+            if ~flag_cf
+                reliability_cf_set(end+1) = reliability_cf;
+            end
+
+            if ~flag_color
+                reliability_color_set(end+1) = reliability_color;
+            end
+
+            if numel(reliability_set)>params.set_size
+                reliability_set(1) = [];
+            end
+
+            if numel(reliability_cf_set)>params.set_size
+                reliability_cf_set(1) = [];
+            end
+
+            if numel(reliability_color_set)>params.set_size
+                reliability_color_set(1) = [];
+            end
+        end
+
+
+        if ~unreliable_flag
+            [row, col] = find(response == max(response(:)), 1);
+            old_pos = pos;
+            pos = pos + ([row, col] - center) / norm_resize_factor;
+        end
+
+        if params.use_scale_filter
+            if ~unreliable_flag
+                %create a new feature projection matrix
+                [xs_pca, xs_npca] = get_scale_subwindow(im,pos,base_target_sz,currentScaleFactor*scaleSizeFactors,scale_model_sz);
+
+                xs = feature_projection_scale(xs_npca,xs_pca,scale_basis,scale_window);
+                xsf = fft(xs,[],2);
+
+                scale_responsef = sum(sf_num .* xsf, 1) ./ (sf_den + scale_lambda);
+
+                interp_scale_response = ifft( resizeDFT(scale_responsef, nScalesInterp), 'symmetric');
+
+                recovered_scale_index = find(interp_scale_response == max(interp_scale_response(:)), 1);
+
+                %set the scale
+                currentScaleFactor = currentScaleFactor * interpScaleFactors(recovered_scale_index);
+                %adjust to make sure we are not to large or to small
+                if currentScaleFactor < min_scale_factor
+                    currentScaleFactor = min_scale_factor;
+                elseif currentScaleFactor > max_scale_factor
+                    currentScaleFactor = max_scale_factor;
+                end
+            end
+        end
+
+        target_sz = round(base_target_sz * currentScaleFactor);
+        avg_dim = sum(target_sz)/2;
+        window_sz = round(target_sz + padding*avg_dim);
+        if(window_sz(2)>size(im,2)),  window_sz(2)=size(im,2)-1;    end
+        if(window_sz(1)>size(im,1)),  window_sz(1)=size(im,1)-1;    end
+
+        %window_sz = window_sz - mod(window_sz - target_sz, 2);
+
+        norm_resize_factor = sqrt(params.fixed_area/prod(window_sz));  
     end
     
     if lt_state == 1
@@ -459,7 +451,7 @@ for frame = 1:num_frames
                 flag_color_det = (ratio_color_det >= params.ratio_color_threshold_recover);
                 flag_response_det = (ratio_response_det >= params.ratio_response_threshold_recover);
                 
-                if ratio_response_det> ratio_response
+                if ratio_response_det> ratio_response && ratio_cf_det>ratio_cf && ratio_color_det>ratio_color
                     %unreliable_flag = false;
                     [row, col] = find(response == max(response(:)), 1);
                     old_pos = det_pos;
