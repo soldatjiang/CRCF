@@ -118,6 +118,10 @@ reliability_cf_set = [];
 reliability_color_set = [];
 reliability_set = [];
 
+reliability_cf = 0;
+reliability_color = 0;
+reliability_response = 0;
+
 if params.debug
     reliability_plt = [];
     reliability_cf_plt = [];
@@ -216,7 +220,6 @@ for frame = 1:num_frames
             end
         end
 
-
         if ~unreliable_flag
             [row, col] = find(response == max(response(:)), 1);
             old_pos = pos;
@@ -224,7 +227,7 @@ for frame = 1:num_frames
         end
 
         if params.use_scale_filter
-            if ~unreliable_flag
+            if ~unreliable_flag && lt_state == 1
                 %create a new feature projection matrix
                 [xs_pca, xs_npca] = get_scale_subwindow(im,pos,base_target_sz,currentScaleFactor*scaleSizeFactors,scale_model_sz);
 
@@ -309,6 +312,9 @@ for frame = 1:num_frames
         
         if ~unreliable_flag
             last_ok_frame = frame;
+            last_pos = pos;
+            last_reliability_response = reliability_response;
+            last_reliability_cf = reliability_cf;
         end
         
         if unreliable_flag && (frame - last_ok_frame)>=5
@@ -366,7 +372,7 @@ for frame = 1:num_frames
             exponent_idx = frame - last_ok_frame - 2;
             size_factor = 1.05 ^ exponent_idx;
             sigma_factor = 0.5;
-            [Y_,X_] = ndgrid((1:size(im,1)) - pos(1), (1:size(im,2)) - pos(2));
+            [Y_,X_] = ndgrid((1:size(im,1)) - last_pos(1), (1:size(im,2)) - last_pos(2));
             gauss_prior = exp(-0.5 * ( ((Y_.^2)/(sigma_factor * size_factor * target_sz(1))^2) + ((X_.^2)/((sigma_factor * size_factor * target_sz(2))^2)) ) );  
             G = mexResize(gauss_prior, [size(img_det_xt,1), size(img_det_xt, 2)], 'auto');
             img_det_xt = bsxfun(@times, img_det_xt, G);            
@@ -453,11 +459,11 @@ for frame = 1:num_frames
                 
                 dist_panelty = cos(pi/9/sum(norm_target_sz)*sqrt(sum((det_pos-pos).^2)));
                 
-                %reliability_response_det = reliability_response_det * dist_panelty;
-                %reliability_cf_det = reliability_cf_det * dist_panelty;
-                %reliability_color_det = reliability_color_det * dist_panelty;
+                reliability_response_det = reliability_response_det * dist_panelty;
+                reliability_cf_det = reliability_cf_det * dist_panelty;
+                reliability_color_det = reliability_color_det * dist_panelty;
                 
-                if reliability_response_det * dist_panelty > reliability_response
+                if reliability_response_det > last_reliability_response
                     %unreliable_flag = false;
                     [row, col] = find(response == max(response(:)), 1);
                     old_pos = det_pos;
@@ -590,7 +596,7 @@ for frame = 1:num_frames
         end
     
         if params.use_scale_filter
-            if ~unreliable_flag
+            if ~unreliable_flag && lt_state == 1
                 %create a new feature projection matrix
                 [xs_pca, xs_npca] = get_scale_subwindow(im, pos, base_target_sz, currentScaleFactor*scaleSizeFactors, scale_model_sz);
 
