@@ -133,6 +133,8 @@ unreliable_flag = false;
 last_ok_frame = 1;
 det_scale_idx = 1;
 
+recover_accu = 0;
+
 for frame = 1:num_frames
     im = imread(s_frames{frame});
     
@@ -187,6 +189,10 @@ for frame = 1:num_frames
             if flag_cf && flag_color && flag_response
                 %fprintf('%d, Unreliable Frame\n', frame);
                 unreliable_flag = true;
+                
+                if lt_state == 2
+                    recover_accu = 0;
+                end
             end
         end
 
@@ -224,6 +230,20 @@ for frame = 1:num_frames
             [row, col] = find(response == max(response(:)), 1);
             old_pos = pos;
             pos = pos + ([row, col] - center) / norm_resize_factor;
+        end
+        
+        if ~unreliable_flag && lt_state == 2
+            if recover_accu == 0
+                recover_accu = recover_accu + 1;
+            else
+                if last_ok_frame == frame - 1
+                    recover_accu = recover_accu + 1;
+                end
+            end
+            
+            if recover_accu >= 5
+                lt_state = 1;
+            end
         end
 
         if params.use_scale_filter
@@ -319,6 +339,7 @@ for frame = 1:num_frames
         
         if unreliable_flag && (frame - last_ok_frame)>=5
             lt_state = 2;
+            recover_accu = 0;
         end
     end
            
@@ -419,7 +440,7 @@ for frame = 1:num_frames
                 disp_col = mod(col - 1 + floor((img_det_sz(2)-1)/2), img_det_sz(2)) - floor((img_det_sz(2)-1)/2);
                     
                 old_pos = pos;
-                det_pos = center_pos + floor([disp_row, disp_col]*cell_size/(norm_resize_factor * params.det_scales(det_scale_idx)));
+                det_pos = center_pos + floor([disp_row, disp_col]*cell_size / (norm_resize_factor * params.det_scales(det_scale_idx)));
                 
                 patch = get_subwindow(im, det_pos, norm_window_sz, floor(window_sz * params.det_scales(det_scale_idx)));
                 [xt, colour_map] = extract_features(patch, features);
@@ -457,7 +478,9 @@ for frame = 1:num_frames
                 flag_color_det = (ratio_color_det >= params.ratio_color_threshold_recover);
                 flag_response_det = (ratio_response_det >= params.ratio_response_threshold_recover);
                 
-                dist_panelty = cos(pi/9/sum(norm_target_sz)*sqrt(sum((det_pos-pos).^2)));
+                %dist_panelty = cos(pi/9/sum(target_sz)*sqrt(sum((det_pos-pos).^2)));
+                %dist_panelty = max(dist_panelty, 0);
+                dist_panelty = 1;
                 
                 reliability_response_det = reliability_response_det * dist_panelty;
                 reliability_cf_det = reliability_cf_det * dist_panelty;
@@ -465,9 +488,9 @@ for frame = 1:num_frames
                 
                 if reliability_response_det > last_reliability_response
                     %unreliable_flag = false;
-                    [row, col] = find(response == max(response(:)), 1);
+                    [row, col] = find(response_det == max(response_det(:)), 1);
                     old_pos = det_pos;
-                    pos = det_pos + ([row, col] - center) / norm_resize_factor; 
+                    pos = det_pos + ([row, col] - center) / (norm_resize_factor * params.det_scales(det_scale_idx)); 
                 end 
                 
                 if flag_cf_det && flag_color_det && flag_response_det
