@@ -145,7 +145,7 @@ for frame = 1:num_frames
             response_cf = crop_response(response_cf, floor_odd(norm_delta_sz / cell_size));
             response_cf = mexResize(response_cf, norm_delta_sz, 'auto');
             
-            merge_factor = reliability_color / (reliability_cf + reliability_color);
+            %merge_factor = reliability_color / (reliability_cf + reliability_color);
             %merge_factor = 0.3;
             %merge_factor = 0;
             
@@ -401,7 +401,7 @@ for frame = 1:num_frames
                     imshow(colour_map)
                 end
             catch
-                disp("Catch exception")
+                disp('Catch exception')
                 return
             end
         end   

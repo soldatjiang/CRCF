@@ -1,4 +1,4 @@
-base_path = 'D:\JiangShan\data_seq\OTB100-Test';
+base_path = 'E:\data_seq\OTB100-Test';
 setup_paths();
 video_path = choose_video(base_path);
 [seq, ~] = load_video_info(video_path, 1);
