@@ -1,4 +1,4 @@
-function results = run_CRCF_Continuous(seq, res_path, bSaveImage, parameters)
+function results = run_CRCF(seq, res_path, bSaveImage, parameters)
 params.cell_size = 4;
 params.padding = 1;
 params.lambda = 1e-3;
@@ -44,7 +44,7 @@ params.admm_lambda = 1e-2;
 params.skip_check_beginning = 25;
 params.redetect_frames = 5;
 params.set_size = 100;
-params.debug = true;
+params.debug = false;
 
 params.ratio_cf_threshold = 0.6;
 params.ratio_color_threshold = 0.7;
@@ -57,10 +57,12 @@ params.ratio_response_threshold_recover = 0.6;
 params.threshold_lost = 1.2;
 params.threshold_recover = 1.5;
 
-params.target_sz    = [seq.init_rect(1,4), seq.init_rect(1,3)];
-params.init_pos = [seq.init_rect(1,2), seq.init_rect(1,1)] + floor(params.target_sz/2);
-params.s_frames = seq.s_frames;
-params.num_frames  = numel(seq.s_frames);
+%params.target_sz    = [seq.init_rect(1,4), seq.init_rect(1,3)];
+%params.init_pos = [seq.init_rect(1,2), seq.init_rect(1,1)] + floor(params.target_sz/2);
+%params.s_frames = seq.s_frames;
+%params.num_frames  = numel(seq.s_frames);
+
+params.seq = seq;
 
 params.visualization = 1;
 params.visualization_cmap = 0;

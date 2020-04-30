@@ -10,6 +10,36 @@ learning_rate_cf = params.learning_rate_cf;
 learning_rate_hist = params.learning_rate_hist;
 learning_rate_scale = params.learning_rate_scale;
 
+% Get sequence info
+[seq, im] = get_sequence_info(params.seq);
+params = rmfield(params, 'seq');
+if isempty(im)
+    seq.rect_position = [];
+    [seq, results] = get_sequence_results(seq);
+    return;
+end
+
+% Check if color image
+if size(im,3) == 3
+    if all(all(im(:,:,1) == im(:,:,2)))
+        is_color_image = false;
+    else
+        is_color_image = true;
+    end
+else
+    is_color_image = false;
+end
+
+if size(im,3) > 1 && is_color_image == false
+    im = im(:,:,1);
+end
+
+% Init position
+pos = seq.init_pos(:)';
+old_pos = pos;
+target_sz = seq.init_sz(:)';
+params.target_sz = target_sz;
+
 params = init_all_areas(params);
 window_sz = params.window_sz;
 norm_window_sz = params.norm_window_sz;
@@ -20,14 +50,6 @@ norm_delta_sz = params.norm_delta_sz;
 cf_response_sz = params.cf_response_sz;
 window_sz_large = params.window_sz_large;
 norm_window_sz_large = params.norm_window_sz_large;
-
-s_frames = params.s_frames;
-pos = floor(params.init_pos);
-old_pos = pos;
-target_sz = floor(params.target_sz);
-num_frames = params.num_frames;
-
-rect_position = zeros(num_frames, 4);
 
 base_target_sz = target_sz;
 
@@ -87,15 +109,12 @@ if params.use_scale_filter
     %set the scale model size
     scale_model_sz = floor(base_target_sz * scale_model_factor);
     
-    im = imread(s_frames{1});
-    
     %force reasonable scale changes
     min_scale_factor = scale_step ^ ceil(log(max(5 ./ window_sz)) / log(scale_step));
     max_scale_factor = scale_step ^ floor(log(min([size(im,1) size(im,2)] ./ base_target_sz)) / log(scale_step));
 end
 
 if params.gaussian_merge_sample
-    im = imread(s_frames{1});
     distance_matrix = inf(params.nSamples, 'single');
     hash_samples = false(64, params.nSamples);
     samples_patch = zeros(params.nSamples, norm_window_sz(1), norm_window_sz(2), size(im, 3), 'uint8');
@@ -110,7 +129,7 @@ if params.gaussian_merge_sample
     num_training_samples = 0;
 end
 
-time = 0;
+seq.time = 0;
 
 lt_resp_flag = false;
 
@@ -135,11 +154,22 @@ det_scale_idx = 1;
 
 recover_accu = 0;
 
-for frame = 1:num_frames
-    im = imread(s_frames{frame});
+while true
+    % Read image
+    if seq.frame > 0
+        [seq, im] = get_sequence_frame(seq);
+        if isempty(im)
+            break;
+        end
+        if size(im,3) > 1 && is_color_image == false
+            im = im(:,:,1);
+        end
+    else
+        seq.frame = 1;
+    end
     
     tic();
-    if frame>1
+    if seq.frame>1
         unreliable_flag = false;
         patch = get_subwindow(im, pos, norm_window_sz, window_sz);
         [xt, colour_map] = extract_features(patch, features);
@@ -165,7 +195,7 @@ for frame = 1:num_frames
 
         reliability_response = max(response(:)) * squeeze(APCE(response));
 
-        if frame>= params.skip_check_beginning
+        if seq.frame>= params.skip_check_beginning
             ratio_response = reliability_response / mean(reliability_set);
             ratio_cf = reliability_cf / mean(reliability_cf_set);
             ratio_color = reliability_color / mean(reliability_color_set);
@@ -196,7 +226,7 @@ for frame = 1:num_frames
             end
         end
 
-        if frame<params.skip_check_beginning
+        if seq.frame<params.skip_check_beginning
             reliability_cf_set(end+1) = reliability_cf;
             reliability_color_set(end+1) = reliability_color;
             reliability_set(end+1) = reliability_response;
@@ -236,7 +266,7 @@ for frame = 1:num_frames
             if recover_accu == 0
                 recover_accu = recover_accu + 1;
             else
-                if last_ok_frame == frame - 1
+                if last_ok_frame == seq.frame - 1
                     recover_accu = recover_accu + 1;
                 end
             end
@@ -331,13 +361,13 @@ for frame = 1:num_frames
         end
         
         if ~unreliable_flag
-            last_ok_frame = frame;
+            last_ok_frame = seq.frame;
             last_pos = pos;
             last_reliability_response = reliability_response;
             last_reliability_cf = reliability_cf;
         end
         
-        if unreliable_flag && (frame - last_ok_frame)>=5
+        if unreliable_flag && (seq.frame - last_ok_frame)>=5
             lt_state = 2;
             recover_accu = 0;
         end
@@ -390,7 +420,7 @@ for frame = 1:num_frames
             img_det = mexResize(im, img_sz, 'auto');
             img_det_xt = extract_features(img_det, features_large);
             
-            exponent_idx = frame - last_ok_frame - 2;
+            exponent_idx = seq.frame - last_ok_frame - 2;
             size_factor = 1.05 ^ exponent_idx;
             sigma_factor = 0.5;
             [Y_,X_] = ndgrid((1:size(im,1)) - last_pos(1), (1:size(im,2)) - last_pos(2));
@@ -496,7 +526,7 @@ for frame = 1:num_frames
                 if flag_cf_det && flag_color_det && flag_response_det
                     %fprintf('%d, Recovered Frame\n', frame);
                     lt_state = 1;
-                    last_ok_frame = frame;
+                    last_ok_frame = seq.frame;
                     
                     currentScaleFactor = currentScaleFactor * params.det_scales(det_scale_idx);
                     det_scale_idx = 1;
@@ -563,7 +593,7 @@ for frame = 1:num_frames
        
     if lt_state == 1 % Update tracker model
         if params.gaussian_merge_sample
-            if (frame==1||mod(frame, params.train_gap)==0)
+            if (seq.frame==1||mod(seq.frame, params.train_gap)==0)
                 if num_training_samples < params.nSamples
                     if params.form2
                         model_x = sum(bsxfun(@times, prior_weights(1:num_training_samples), samples(1:num_training_samples,:,:,:)), 1);
@@ -601,7 +631,7 @@ for frame = 1:num_frames
                 end
             end
         else
-            if frame == 1
+            if seq.frame == 1
                  model_xtf = xtf;
             else
                  model_xtf = (1 - learning_rate_cf) * model_xtf + learning_rate_cf * xtf;
@@ -609,7 +639,7 @@ for frame = 1:num_frames
             new_hf_num = bsxfun(@times, yf, conj(xtf));
             new_hf_den = conj(xtf) .* xtf;
 
-            if frame == 1
+            if seq.frame == 1
                  hf_num = new_hf_num;
                  hf_den = new_hf_den;
             else
@@ -623,7 +653,7 @@ for frame = 1:num_frames
                 %create a new feature projection matrix
                 [xs_pca, xs_npca] = get_scale_subwindow(im, pos, base_target_sz, currentScaleFactor*scaleSizeFactors, scale_model_sz);
 
-                if frame == 1
+                if seq.frame == 1
                     s_num = xs_pca;
                 else
                     s_num = (1 - learning_rate_scale) * s_num + learning_rate_scale * xs_pca;
@@ -644,7 +674,7 @@ for frame = 1:num_frames
                 xsf = fft(xs,[],2);
                 new_sf_den = sum(xsf .* conj(xsf),1);
 
-                if frame == 1
+                if seq.frame == 1
                     sf_den = new_sf_den;
                 else
                     sf_den = (1 - learning_rate_scale) * sf_den + learning_rate_scale * new_sf_den;
@@ -654,9 +684,11 @@ for frame = 1:num_frames
     end
 
     %save position and calculate FPS
-    rect_position(frame,:) = [pos([2,1]) - floor(target_sz([2,1])/2), target_sz([2,1])];
-
-    time = time + toc();
+    tracking_result.center_pos = double(pos);
+    tracking_result.target_size = double(target_sz);
+    seq = report_tracking_result(seq, tracking_result);
+    
+    seq.time = seq.time + toc();
     
     if params.visualization == 1
         rect_position_vis = [pos([2,1]) - (target_sz([2,1]) - 1)/2, target_sz([2,1])];
@@ -665,12 +697,12 @@ for frame = 1:num_frames
             im_to_show = repmat(im_to_show, [1 1 3]);
         end
 
-        if frame == 1,  %first frame, create GUI
+        if seq.frame == 1,  %first frame, create GUI
             fig_handle = figure('Name','CRCF tracker');
             imagesc(im_to_show)
             %imshow(uint8(im), 'Border','tight', 'InitialMag', 100 + 100 * (length(im) < 500));
             rectangle('Position',rect_position_vis, 'EdgeColor','g', 'LineWidth',2);
-            text(10, 10, int2str(frame), 'color', [0 1 1]);
+            text(10, 10, int2str(seq.frame), 'color', [0 1 1]);
             hold on;
             resp_sz = round(norm_delta_sz*currentScaleFactor);
             xs = floor(old_pos(2)) + (1:resp_sz(2)) - floor(resp_sz(2)/2);
@@ -688,7 +720,7 @@ for frame = 1:num_frames
                 %imshow(uint8(im), 'Border','tight', 'InitialMag', 100 + 100 * (length(im) < 500));
                 imagesc(im_to_show)
                 rectangle('Position',rect_position_vis, 'EdgeColor','g', 'LineWidth',2);
-                text(10, 10, int2str(frame), 'color', [0 1 1]);
+                text(10, 10, int2str(seq.frame), 'color', [0 1 1]);
                 hold on;
                 resp_sz = round(norm_delta_sz*currentScaleFactor);
                 xs = floor(old_pos(2)) + (1:resp_sz(2)) - floor(resp_sz(2)/2);
@@ -709,16 +741,13 @@ for frame = 1:num_frames
 %         pause
     end
 end 
-
-fps = num_frames / time;
 % disp(['fps: ' num2str(fps)])
 if params.visualization == 1
     %close(fig_handle);
 end
 
-results.type = 'rect';
-results.res = rect_position;
-results.fps = fps;
+[seq, results] = get_sequence_results(seq);
+disp(['fps: ' num2str(results.fps)])
 
 end
 
